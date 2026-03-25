@@ -3,6 +3,8 @@ import { createTemplatePosterDataUrl } from '../lib/templateArt'
 import type {
   AppState,
   AttributeCategory,
+  NumberDrawField,
+  NumberDrawSession,
   PlayerProfile,
   RecommendedTemplate,
   TagDefinition,
@@ -368,6 +370,32 @@ export const defaultTagDefinitions: TagDefinition[] = [
   },
 ]
 
+export const defaultNumberFields: NumberDrawField[] = [
+  createNumberField('body.height', '身高', 170, 224, 198, 'cm', '贴近 2K Builder 的身高范围'),
+  createNumberField('body.weight', '体重', 70, 170, 98, 'kg', '用于控制对抗与机动性的基础体重'),
+  createNumberField('body.wingspan', '臂展', 175, 250, 211, 'cm', '长臂展会让护框和干扰更强'),
+  createNumberField('body.frameIndex', '体型指数', 1, 10, 5, '', '1 更瘦长，10 更宽肩厚重'),
+  createNumberField('athleticism.speed', '速度', 25, 99, 65, '', '基础能力值区间使用 2K 常见概念'),
+  createNumberField('athleticism.acceleration', '加速', 25, 99, 65, '', '第一步和启动爆发的核心指标'),
+  createNumberField('athleticism.vertical', '弹跳', 25, 99, 65, '', '影响起跳高度与冲板上限'),
+  createNumberField('athleticism.strength', '力量', 25, 99, 65, '', '影响卡位、对抗和低位稳定性'),
+  createNumberField('finishing.layup', '上篮', 25, 99, 65, '', '篮下变向与抛投终结基础'),
+  createNumberField('finishing.drivingDunk', '扣篮', 25, 99, 65, '', '冲框扣篮和隔扣上限'),
+  createNumberField('finishing.closeShot', '近框终结', 25, 99, 65, '', '站桩终结和勾手类近框分数'),
+  createNumberField('shooting.midRange', '中投', 25, 99, 65, '', '中距离跳投基础能力'),
+  createNumberField('shooting.threePoint', '三分', 25, 99, 65, '', '远投威胁与接投上限'),
+  createNumberField('shooting.freeThrow', '罚球', 25, 99, 65, '', '罚球稳定度'),
+  createNumberField('playmaking.ballHandle', '控球', 25, 99, 65, '', '持球变化与护球能力'),
+  createNumberField('playmaking.passAccuracy', '传球', 25, 99, 65, '', '传导速度与出球质量'),
+  createNumberField('defense.perimeterDefense', '外防', 25, 99, 65, '', '外线横移与贴防基础'),
+  createNumberField('defense.interiorDefense', '内防', 25, 99, 65, '', '低位顶防与近框抗衡'),
+  createNumberField('defense.steal', '抢断', 25, 99, 65, '', '切球与线路预判能力'),
+  createNumberField('defense.block', '盖帽', 25, 99, 65, '', '护框干扰与封盖上限'),
+  createNumberField('rebounding.defensiveRebound', '后场篮板', 25, 99, 65, '', '保护篮板与终结回合能力'),
+]
+
+export const defaultNumberSession = createNumberDrawSession(defaultNumberFields)
+
 export function createDefaultAppState(): AppState {
   return {
     version: 2,
@@ -375,6 +403,8 @@ export function createDefaultAppState(): AppState {
     players: structuredClone(defaultPlayers),
     recommendedTemplates: structuredClone(defaultRecommendedTemplates),
     tagDefinitions: structuredClone(defaultTagDefinitions),
+    numberFields: structuredClone(defaultNumberFields),
+    numberSession: structuredClone(defaultNumberSession),
     templates: [],
     session: createSession(null, [...defaultFieldOrder]),
   }
@@ -443,5 +473,36 @@ function createPlayer(
     tags,
     aliases,
     categories,
+  }
+}
+
+function createNumberField(
+  id: string,
+  label: string,
+  min: number,
+  max: number,
+  defaultValue: number,
+  unit: string,
+  note: string,
+): NumberDrawField {
+  return {
+    id,
+    label,
+    min,
+    max,
+    defaultValue,
+    unit,
+    note,
+  }
+}
+
+function createNumberDrawSession(fields: NumberDrawField[]): NumberDrawSession {
+  const now = new Date().toISOString()
+
+  return {
+    activeFieldId: fields[0]?.id ?? '',
+    results: {},
+    createdAt: now,
+    updatedAt: now,
   }
 }

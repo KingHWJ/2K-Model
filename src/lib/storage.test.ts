@@ -12,8 +12,10 @@ describe('storage', () => {
 
     expect(state.version).toBe(2)
     expect(state.recommendedTemplates.length).toBeGreaterThan(0)
+    expect(state.numberFields.length).toBeGreaterThan(5)
     expect(state.players.length).toBeGreaterThan(5)
     expect(state.session.templateName).toBe('未命名模板')
+    expect(state.numberSession.activeFieldId).toBe('body.height')
   })
 
   it('会保存并恢复最新状态与自定义封面', () => {
@@ -65,6 +67,17 @@ describe('storage', () => {
           updatedAt: '2026-03-25T11:00:00.000Z',
         },
       ],
+      numberSession: {
+        ...baseState.numberSession,
+        activeFieldId: 'body.height',
+        results: {
+          'body.height': {
+            fieldId: 'body.height',
+            value: 198,
+            createdAt: '2026-03-25T11:00:00.000Z',
+          },
+        },
+      },
     }
 
     saveAppState(storage, nextState)
@@ -75,6 +88,7 @@ describe('storage', () => {
     expect(restored.recommendedTemplates[0].customCover).toBe(
       'data:image/png;base64,custom-cover',
     )
+    expect(restored.numberSession.results['body.height']?.value).toBe(198)
   })
 
   it('遇到旧字段缺失时会补齐别名并合并默认封面', () => {
@@ -96,6 +110,8 @@ describe('storage', () => {
           customCover: 'data:image/png;base64,legacy-cover',
         },
       ],
+      numberFields: undefined,
+      numberSession: undefined,
     }
 
     storage.setItem(STORAGE_KEY, JSON.stringify(legacyLikeState))
@@ -109,6 +125,8 @@ describe('storage', () => {
     expect(restored.recommendedTemplates[0].customCover).toBe(
       'data:image/png;base64,legacy-cover',
     )
+    expect(restored.numberFields[0].id).toBe('body.height')
+    expect(restored.numberSession.activeFieldId).toBe('body.height')
   })
 
   it('遇到损坏数据时会安全回退到默认状态', () => {

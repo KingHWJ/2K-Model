@@ -1,4 +1,11 @@
-import type { AppState, BuilderSession, PlayerProfile, RecommendedTemplate } from '../types'
+import type {
+  AppState,
+  BuilderSession,
+  NumberDrawField,
+  NumberDrawSession,
+  PlayerProfile,
+  RecommendedTemplate,
+} from '../types'
 
 export const STORAGE_KEY = '2k26-fusion-builder:v2'
 
@@ -39,6 +46,9 @@ function isValidAppState(value: unknown): value is AppState {
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.recommendedTemplates) &&
     Array.isArray(candidate.tagDefinitions) &&
+    (candidate.numberFields === undefined || Array.isArray(candidate.numberFields)) &&
+    (candidate.numberSession === undefined ||
+      (typeof candidate.numberSession === 'object' && candidate.numberSession !== null)) &&
     Array.isArray(candidate.templates) &&
     typeof candidate.session === 'object' &&
     candidate.session !== null
@@ -52,6 +62,13 @@ function normalizeAppState(state: AppState, fallback: AppState): AppState {
     recommendedTemplates: mergeRecommendedTemplates(
       fallback.recommendedTemplates,
       state.recommendedTemplates,
+    ),
+    numberFields: normalizeNumberFields(state.numberFields, fallback.numberFields),
+    numberSession: normalizeNumberSession(
+      state.numberSession,
+      state.numberFields,
+      fallback.numberFields,
+      fallback.numberSession,
     ),
     session: normalizeSession(state.session, fallback.session),
   }
@@ -98,5 +115,38 @@ function normalizeSession(session: BuilderSession, fallback: BuilderSession): Bu
       session.fieldAssignments && typeof session.fieldAssignments === 'object'
         ? session.fieldAssignments
         : fallback.fieldAssignments,
+  }
+}
+
+function normalizeNumberFields(
+  fields: NumberDrawField[] | undefined,
+  fallback: NumberDrawField[],
+) {
+  return Array.isArray(fields) && fields.length > 0 ? fields : fallback
+}
+
+function normalizeNumberSession(
+  session: NumberDrawSession | undefined,
+  fields: NumberDrawField[] | undefined,
+  fallbackFields: NumberDrawField[],
+  fallback: NumberDrawSession,
+): NumberDrawSession {
+  const normalizedFields = normalizeNumberFields(fields, fallbackFields)
+
+  if (!session) {
+    return {
+      ...fallback,
+      activeFieldId: normalizedFields[0]?.id ?? fallback.activeFieldId,
+    }
+  }
+
+  return {
+    ...session,
+    activeFieldId:
+      typeof session.activeFieldId === 'string' && session.activeFieldId.length > 0
+        ? session.activeFieldId
+        : normalizedFields[0]?.id ?? fallback.activeFieldId,
+    results:
+      session.results && typeof session.results === 'object' ? session.results : fallback.results,
   }
 }

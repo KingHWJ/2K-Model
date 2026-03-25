@@ -51,6 +51,29 @@ export interface TagDefinition {
   focusFields: string[]
 }
 
+export interface NumberDrawField {
+  id: string
+  label: string
+  min: number
+  max: number
+  defaultValue: number
+  unit: string
+  note: string
+}
+
+export interface NumberDrawResult {
+  fieldId: string
+  value: number
+  createdAt: string
+}
+
+export interface NumberDrawSession {
+  activeFieldId: string
+  results: Record<string, NumberDrawResult>
+  createdAt: string
+  updatedAt: string
+}
+
 export interface FieldAssignment {
   fieldId: string
   playerId: string
@@ -114,6 +137,8 @@ export interface AppState {
   players: PlayerProfile[]
   recommendedTemplates: RecommendedTemplate[]
   tagDefinitions: TagDefinition[]
+  numberFields: NumberDrawField[]
+  numberSession: NumberDrawSession
   templates: SavedTemplate[]
   session: BuilderSession
 }
