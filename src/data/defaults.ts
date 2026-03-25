@@ -1,8 +1,10 @@
 import { createSession } from '../lib/builderState'
+import { applyPositionPresetToFields } from '../lib/positionPresets'
 import { createTemplatePosterDataUrl } from '../lib/templateArt'
 import type {
   AppState,
   AttributeCategory,
+  BuildSettings,
   NumberDrawField,
   NumberDrawSession,
   PlayerProfile,
@@ -372,7 +374,7 @@ export const defaultTagDefinitions: TagDefinition[] = [
 
 export const defaultNumberFields: NumberDrawField[] = [
   createRangeField('body.height', '身高', 170, 224, 198, 'cm', '贴近 2K Builder 的身高范围'),
-  createRangeField('body.weight', '体重', 70, 170, 98, 'kg', '用于控制对抗与机动性的基础体重'),
+  createRangeField('body.weight', '体重', 70, 159, 98, 'kg', '用于控制对抗与机动性的基础体重'),
   createRangeField('body.wingspan', '臂展', 175, 250, 211, 'cm', '长臂展会让护框和干扰更强'),
   createOptionField(
     'body.shoulderBuild',
@@ -400,17 +402,29 @@ export const defaultNumberFields: NumberDrawField[] = [
   createRangeField('rebounding.defensiveRebound', '后场篮板', 25, 99, 65, '', '保护篮板与终结回合能力'),
 ]
 
-export const defaultNumberSession = createNumberDrawSession(defaultNumberFields)
+export const defaultBuildSettings: BuildSettings = {
+  positionPresetId: 'all',
+}
+
+export const defaultNumberSession = createNumberDrawSession(
+  applyPositionPresetToFields(defaultNumberFields, defaultBuildSettings.positionPresetId),
+)
 
 export function createDefaultAppState(): AppState {
+  const numberFields = applyPositionPresetToFields(
+    structuredClone(defaultNumberFields),
+    defaultBuildSettings.positionPresetId,
+  )
+
   return {
     version: 2,
     categories: structuredClone(defaultCategories),
     players: structuredClone(defaultPlayers),
     recommendedTemplates: structuredClone(defaultRecommendedTemplates),
     tagDefinitions: structuredClone(defaultTagDefinitions),
-    numberFields: structuredClone(defaultNumberFields),
-    numberSession: structuredClone(defaultNumberSession),
+    settings: structuredClone(defaultBuildSettings),
+    numberFields,
+    numberSession: createNumberDrawSession(numberFields),
     templates: [],
     session: createSession(null, [...defaultFieldOrder]),
   }

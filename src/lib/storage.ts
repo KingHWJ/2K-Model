@@ -1,11 +1,13 @@
 import type {
   AppState,
+  BuildSettings,
   BuilderSession,
   NumberDrawField,
   NumberDrawSession,
   PlayerProfile,
   RecommendedTemplate,
 } from '../types'
+import { applyPositionPresetToFields, getPositionPreset } from './positionPresets'
 
 export const STORAGE_KEY = '2k26-fusion-builder:v2'
 
@@ -46,6 +48,8 @@ function isValidAppState(value: unknown): value is AppState {
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.recommendedTemplates) &&
     Array.isArray(candidate.tagDefinitions) &&
+    (candidate.settings === undefined ||
+      (typeof candidate.settings === 'object' && candidate.settings !== null)) &&
     (candidate.numberFields === undefined || Array.isArray(candidate.numberFields)) &&
     (candidate.numberSession === undefined ||
       (typeof candidate.numberSession === 'object' && candidate.numberSession !== null)) &&
@@ -56,6 +60,13 @@ function isValidAppState(value: unknown): value is AppState {
 }
 
 function normalizeAppState(state: AppState, fallback: AppState): AppState {
+  const normalizedSettings = normalizeSettings(state.settings, fallback.settings)
+  const presetFallbackFields = applyPositionPresetToFields(
+    structuredClone(fallback.numberFields),
+    normalizedSettings.positionPresetId,
+  )
+  const normalizedNumberFields = normalizeNumberFields(state.numberFields, presetFallbackFields)
+
   return {
     ...state,
     players: state.players.map(normalizePlayerProfile),
@@ -63,14 +74,33 @@ function normalizeAppState(state: AppState, fallback: AppState): AppState {
       fallback.recommendedTemplates,
       state.recommendedTemplates,
     ),
-    numberFields: normalizeNumberFields(state.numberFields, fallback.numberFields),
+    settings: normalizedSettings,
+    numberFields: normalizedNumberFields,
     numberSession: normalizeNumberSession(
       state.numberSession,
-      state.numberFields,
-      fallback.numberFields,
+      normalizedNumberFields,
+      presetFallbackFields,
       fallback.numberSession,
     ),
     session: normalizeSession(state.session, fallback.session),
+  }
+}
+
+function normalizeSettings(
+  settings: BuildSettings | undefined,
+  fallback: BuildSettings,
+): BuildSettings {
+  if (!settings) {
+    return fallback
+  }
+
+  const presetId =
+    typeof settings.positionPresetId === 'string' && settings.positionPresetId.length > 0
+      ? getPositionPreset(settings.positionPresetId).id
+      : fallback.positionPresetId
+
+  return {
+    positionPresetId: presetId,
   }
 }
 
@@ -122,9 +152,54 @@ function normalizeNumberFields(
   fields: NumberDrawField[] | undefined,
   fallback: NumberDrawField[],
 ) {
-  void fields
-  // 数值直抽字段当前以内置默认集为准，避免旧版字段结构残留到新界面里。
-  return fallback
+  if (!fields || fields.length === 0) {
+    return fallback
+  }
+
+  const savedFieldMap = new Map(fields.map((field) => [field.id, field]))
+
+  // 保留内置字段骨架，同时吸收用户自定义的默认值和范围配置。
+  return fallback.map((field) => {
+    const savedField = savedFieldMap.get(field.id)
+
+    if (!savedField || savedField.kind !== field.kind) {
+      return field
+    }
+
+    if (field.kind === 'options') {
+      const options =
+        Array.isArray(savedField.options) && savedField.options.length > 0
+          ? savedField.options.filter((item) => typeof item === 'string' && item.trim().length > 0)
+          : field.options
+
+      const defaultValue =
+        typeof savedField.defaultValue === 'string' && options?.includes(savedField.defaultValue)
+          ? savedField.defaultValue
+          : field.defaultValue
+
+      return {
+        ...field,
+        options,
+        defaultValue,
+      }
+    }
+
+    const min = typeof savedField.min === 'number' ? savedField.min : field.min
+    const max = typeof savedField.max === 'number' ? savedField.max : field.max
+    const normalizedMin = Math.min(min ?? 0, max ?? min ?? 0)
+    const normalizedMax = Math.max(min ?? max ?? 0, max ?? 0)
+    const defaultValue =
+      typeof savedField.defaultValue === 'number'
+        ? clamp(savedField.defaultValue, normalizedMin, normalizedMax)
+        : field.defaultValue
+
+    return {
+      ...field,
+      min: normalizedMin,
+      max: normalizedMax,
+      defaultValue,
+    }
+  })
 }
 
 function normalizeNumberSession(
@@ -158,4 +233,8 @@ function normalizeNumberSession(
           )
         : fallback.results,
   }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }

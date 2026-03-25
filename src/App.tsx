@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import './App.css'
 import { WheelDisplay } from './components/WheelDisplay'
-import { createDefaultAppState } from './data/defaults'
+import {
+  createDefaultAppState,
+  defaultBuildSettings,
+  defaultNumberFields,
+  defaultRecommendedTemplates,
+} from './data/defaults'
 import {
   createBuilderFields,
   createSession,
@@ -10,6 +15,8 @@ import {
   openTemplateSession,
   saveTemplateFromSession,
 } from './lib/builderState'
+import { parse2KRatingsPlayerText } from './lib/import2kRatings'
+import { applyPositionPresetToFields, defaultPositionPresets, getPositionPreset } from './lib/positionPresets'
 import { loadAppState, saveAppState } from './lib/storage'
 import { createSpinSequence, getTargetWheelRotation } from './lib/wheel'
 import type {
@@ -23,7 +30,7 @@ import type {
   SavedTemplate,
 } from './types'
 
-type PageView = 'home' | 'builder' | 'number-draw' | 'tags' | 'library'
+type PageView = 'home' | 'builder' | 'number-draw' | 'settings' | 'tags' | 'library'
 
 // 抽取结果先进入弹窗确认，关闭后才推进到下一字段。
 interface DrawResultModalState {
@@ -52,6 +59,13 @@ const emptyDrawResultModal: DrawResultModalState = {
   pendingNumberFieldId: null,
 }
 
+interface NumberFieldDraft {
+  minText: string
+  maxText: string
+  defaultText: string
+  optionsText: string
+}
+
 function App() {
   const [appState, setAppState] = useState<AppState>(() =>
     loadAppState(window.localStorage, createDefaultAppState()),
@@ -67,10 +81,33 @@ function App() {
   const [numberWheelSelectedItem, setNumberWheelSelectedItem] = useState('')
   const [isNumberWheelSpinning, setIsNumberWheelSpinning] = useState(false)
   const [drawResultModal, setDrawResultModal] = useState<DrawResultModalState>(emptyDrawResultModal)
+  const [isResultTransitioning, setIsResultTransitioning] = useState(false)
+  const [numberFieldDraft, setNumberFieldDraft] = useState<NumberFieldDraft>(
+    createNumberFieldDraft(null),
+  )
+  const [playerSearchQuery, setPlayerSearchQuery] = useState('')
+  const [importText, setImportText] = useState('')
+  const [importFeedback, setImportFeedback] = useState('')
+  const [showBackToTop, setShowBackToTop] = useState(false)
+  const resultFlowTokenRef = useRef(0)
 
   useEffect(() => {
     saveAppState(window.localStorage, appState)
   }, [appState])
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 240)
+    }
+
+    handleScroll()
+    window.addEventListener('scroll', handleScroll)
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      resultFlowTokenRef.current += 1
+    }
+  }, [])
 
   const activeRecommendedTemplate =
     appState.recommendedTemplates.find(
@@ -86,6 +123,7 @@ function App() {
     appState.numberFields.find((field) => field.id === appState.numberSession.activeFieldId) ??
     appState.numberFields[0] ??
     null
+  const currentPositionPreset = getPositionPreset(appState.settings.positionPresetId)
   const numberWheelItems = activeNumberField ? createNumberWheelItems(activeNumberField) : []
   const activeNumberResult = activeNumberField
     ? appState.numberSession.results[activeNumberField.id]
@@ -96,9 +134,17 @@ function App() {
   const candidatePlayers = appState.session.candidatePlayerIds
     .map((playerId) => appState.players.find((player) => player.id === playerId))
     .filter((player): player is PlayerProfile => Boolean(player))
+  const filteredPlayers = useMemo(
+    () => searchPlayers(appState.players, playerSearchQuery),
+    [appState.players, playerSearchQuery],
+  )
   const resultRows = builderFields.map((field) =>
     createFieldRow(field, appState.session, appState.players),
   )
+
+  useEffect(() => {
+    setNumberFieldDraft(createNumberFieldDraft(activeNumberField))
+  }, [activeNumberField])
 
   return (
     <div className="app-shell minimal-shell">
@@ -106,35 +152,42 @@ function App() {
         <button
           type="button"
           className={activeView === 'home' ? 'nav-button active' : 'nav-button'}
-          onClick={() => setActiveView('home')}
+          onClick={() => handleChangeView('home')}
         >
           首页
         </button>
         <button
           type="button"
           className={activeView === 'builder' ? 'nav-button active' : 'nav-button'}
-          onClick={() => setActiveView('builder')}
+          onClick={() => handleChangeView('builder')}
         >
           模板创建
         </button>
         <button
           type="button"
           className={activeView === 'number-draw' ? 'nav-button active' : 'nav-button'}
-          onClick={() => setActiveView('number-draw')}
+          onClick={() => handleChangeView('number-draw')}
         >
           数值直抽
         </button>
         <button
           type="button"
+          className={activeView === 'settings' ? 'nav-button active' : 'nav-button'}
+          onClick={() => handleChangeView('settings')}
+        >
+          设置
+        </button>
+        <button
+          type="button"
           className={activeView === 'tags' ? 'nav-button active' : 'nav-button'}
-          onClick={() => setActiveView('tags')}
+          onClick={() => handleChangeView('tags')}
         >
           标签页
         </button>
         <button
           type="button"
           className={activeView === 'library' ? 'nav-button active' : 'nav-button'}
-          onClick={() => setActiveView('library')}
+          onClick={() => handleChangeView('library')}
         >
           我的模板
         </button>
@@ -143,9 +196,20 @@ function App() {
       {activeView === 'home' ? renderHomeView() : null}
       {activeView === 'builder' ? renderBuilderView() : null}
       {activeView === 'number-draw' ? renderNumberDrawView() : null}
+      {activeView === 'settings' ? renderSettingsView() : null}
       {activeView === 'tags' ? renderTagsView() : null}
       {activeView === 'library' ? renderLibraryView() : null}
       {drawResultModal.isOpen ? renderDrawResultModal() : null}
+      {showBackToTop ? (
+        <button
+          type="button"
+          className="back-to-top-button"
+          aria-label="回到顶部"
+          onClick={handleBackToTop}
+        >
+          回到顶部
+        </button>
+      ) : null}
     </div>
   )
 
@@ -230,7 +294,7 @@ function App() {
           <section className="empty-card">
             <h1>创建模板</h1>
             <p className="muted">先回到首页选择一个模板方向，再进入单转盘创建页。</p>
-            <button type="button" onClick={() => setActiveView('home')}>
+            <button type="button" onClick={() => handleChangeView('home')}>
               返回首页
             </button>
           </section>
@@ -270,9 +334,24 @@ function App() {
                 <p className="eyebrow">当前字段</p>
                 <h3>{currentField.label}</h3>
               </div>
-              <span className="status-pill">
-                已完成 {Object.keys(appState.session.fieldAssignments).length}/{builderFields.length}
-              </span>
+              <div className="inline-action-group">
+                <span className="status-pill">
+                  已完成 {Object.keys(appState.session.fieldAssignments).length}/{builderFields.length}
+                </span>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={handleDrawCurrentField}
+                  disabled={
+                    candidatePlayers.length === 0 ||
+                    isWheelSpinning ||
+                    drawResultModal.isOpen ||
+                    isResultTransitioning
+                  }
+                >
+                  {isWheelSpinning ? '抽取中...' : '开始抽取'}
+                </button>
+              </div>
             </div>
 
             <div className="field-progress">
@@ -304,8 +383,14 @@ function App() {
               <div className="builder-wheel-side-actions">
                 <button
                   type="button"
+                  className="compact-button"
                   onClick={handleDrawCurrentField}
-                  disabled={candidatePlayers.length === 0 || isWheelSpinning || drawResultModal.isOpen}
+                  disabled={
+                    candidatePlayers.length === 0 ||
+                    isWheelSpinning ||
+                    drawResultModal.isOpen ||
+                    isResultTransitioning
+                  }
                 >
                   {isWheelSpinning ? '抽取中...' : '抽取当前字段'}
                 </button>
@@ -331,64 +416,131 @@ function App() {
                 <strong>{currentRow?.noteText ?? '等待抽取'}</strong>
               </div>
             </article>
-
-            <div className="draw-actions">
-              <button
-                type="button"
-                onClick={handleDrawCurrentField}
-                disabled={candidatePlayers.length === 0 || isWheelSpinning || drawResultModal.isOpen}
-              >
-                {isWheelSpinning ? '抽取中...' : '开始抽取'}
-              </button>
-              <button type="button" className="ghost-button" onClick={() => setActiveView('home')}>
-                返回首页
-              </button>
-            </div>
           </div>
 
           <aside className="builder-side-card">
-            <div className="section-title-row">
-              <div>
-                <p className="eyebrow">Template Name</p>
-                <h3>保存当前模板</h3>
-              </div>
-            </div>
-            <label className="field">
-              <span>模板名称</span>
-              <input
-                aria-label="模板名称"
-                value={appState.session.templateName}
-                onChange={(event) => updateSession({
-                  ...appState.session,
-                  templateName: event.target.value,
-                })}
-              />
-            </label>
-            <button
-              type="button"
-              className="accent-button"
-              onClick={handleSaveTemplate}
-              disabled={Object.keys(appState.session.fieldAssignments).length === 0}
-            >
-              保存模板
-            </button>
-
-            <div className="result-table">
-              <div className="result-row result-row-head">
-                <span>字段</span>
-                <span>最终值</span>
-                <span>来源</span>
-                <span>备注</span>
-              </div>
-              {resultRows.map((row) => (
-                <div className="result-row" key={row.field.id}>
-                  <span>{row.field.label}</span>
-                  <span className="result-value-cell">{row.valueText}</span>
-                  <span>{row.sourceText}</span>
-                  <span>{row.noteText}</span>
+            <section className="side-panel-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">候选球员池</p>
+                  <h3>{`当前候选 ${candidatePlayers.length} 人`}</h3>
                 </div>
-              ))}
-            </div>
+              </div>
+
+              <label className="field">
+                <span>搜索球员</span>
+                <input
+                  aria-label="搜索球员"
+                  value={playerSearchQuery}
+                  placeholder="可搜中文名、英文名、缩写或标签"
+                  onChange={(event) => setPlayerSearchQuery(event.target.value)}
+                />
+              </label>
+
+              <div className="compact-action-row">
+                <button type="button" className="ghost-button" onClick={() => setPlayerSearchQuery('')}>
+                  清空搜索
+                </button>
+                <button type="button" className="ghost-button" onClick={handleResetCandidatePool}>
+                  恢复默认候选池
+                </button>
+              </div>
+
+              <div className="candidate-chip-list">
+                {candidatePlayers.map((player) => (
+                  <button
+                    key={player.id}
+                    type="button"
+                    className="soft-chip removable-chip"
+                    aria-label={`移除候选球员 ${player.name}`}
+                    onClick={() => handleRemoveCandidatePlayer(player.id)}
+                    disabled={candidatePlayers.length <= 1}
+                  >
+                    {player.name}
+                  </button>
+                ))}
+              </div>
+
+              <div className="player-search-list">
+                {filteredPlayers.slice(0, 8).map((player) => {
+                  const isSelected = appState.session.candidatePlayerIds.includes(player.id)
+
+                  return (
+                    <div key={player.id} className="player-search-card">
+                      <div>
+                        <strong>{player.name}</strong>
+                        <p className="muted">
+                          {player.position} / 总评 {player.overall}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className={isSelected ? 'ghost-button' : ''}
+                        aria-label={`加入候选球员 ${player.name}`}
+                        onClick={() => handleAddCandidatePlayer(player.id)}
+                        disabled={isSelected}
+                      >
+                        {isSelected ? '已加入' : '加入'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="side-panel-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">Template Name</p>
+                  <h3>保存当前模板</h3>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={() => handleChangeView('home')}
+                >
+                  返回首页
+                </button>
+              </div>
+              <label className="field">
+                <span>模板名称</span>
+                <input
+                  aria-label="模板名称"
+                  value={appState.session.templateName}
+                  onChange={(event) =>
+                    updateSession({
+                      ...appState.session,
+                      templateName: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="accent-button compact-button"
+                onClick={handleSaveTemplate}
+                disabled={Object.keys(appState.session.fieldAssignments).length === 0}
+              >
+                保存模板
+              </button>
+
+              <div className="result-table">
+                <div className="result-row result-row-head">
+                  <span>字段</span>
+                  <span>最终值</span>
+                  <span>来源</span>
+                  <span>备注</span>
+                </div>
+                {resultRows.map((row) => (
+                  <div className="result-row" key={row.field.id}>
+                    <span>{row.field.label}</span>
+                    <span className="result-value-cell">{row.valueText}</span>
+                    <span>{row.sourceText}</span>
+                    <span>{row.noteText}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
           </aside>
         </section>
       </main>
@@ -440,6 +592,13 @@ function App() {
                 <p className="eyebrow">字段列表</p>
                 <h3>默认数值范围</h3>
               </div>
+              <button
+                type="button"
+                className="ghost-button compact-button"
+                onClick={() => handleChangeView('settings')}
+              >
+                前往设置
+              </button>
             </div>
             <div className="number-field-list">
               {appState.numberFields.map((field) => (
@@ -464,6 +623,19 @@ function App() {
                 <p className="eyebrow">当前字段</p>
                 <h3>{activeNumberField?.label ?? '等待字段'}</h3>
               </div>
+              <button
+                type="button"
+                className="ghost-button compact-button"
+                onClick={handleDrawNumberField}
+                disabled={
+                  !activeNumberField ||
+                  isNumberWheelSpinning ||
+                  drawResultModal.isOpen ||
+                  isResultTransitioning
+                }
+              >
+                {isNumberWheelSpinning ? '抽取中...' : '开始抽取'}
+              </button>
             </div>
 
             <div className="number-draw-stage">
@@ -487,8 +659,14 @@ function App() {
               <div className="number-draw-side-actions">
                 <button
                   type="button"
+                  className="compact-button"
                   onClick={handleDrawNumberField}
-                  disabled={!activeNumberField || isNumberWheelSpinning || drawResultModal.isOpen}
+                  disabled={
+                    !activeNumberField ||
+                    isNumberWheelSpinning ||
+                    drawResultModal.isOpen ||
+                    isResultTransitioning
+                  }
                 >
                   {isNumberWheelSpinning ? '抽取中...' : '抽取当前字段'}
                 </button>
@@ -523,16 +701,6 @@ function App() {
               </div>
             </article>
 
-            <div className="draw-actions">
-              <button
-                type="button"
-                onClick={handleDrawNumberField}
-                disabled={!activeNumberField || isNumberWheelSpinning || drawResultModal.isOpen}
-              >
-                {isNumberWheelSpinning ? '抽取中...' : '开始抽取'}
-              </button>
-            </div>
-
             <div className="result-table number-result-table">
               <div className="result-row result-row-head">
                 <span>字段</span>
@@ -551,6 +719,257 @@ function App() {
                 </div>
               ))}
             </div>
+          </section>
+        </section>
+      </main>
+    )
+  }
+
+  function renderSettingsView() {
+    return (
+      <main className="builder-view">
+        <section className="section-title-card">
+          <p className="eyebrow">Settings</p>
+          <h1>设置</h1>
+          <p className="muted">
+            默认值、范围、位置预设和 2KRatings 导入都集中在这里管理，抽取页只保留抽盘本身。
+          </p>
+        </section>
+
+        <section className="settings-layout">
+          <aside className="builder-side-card">
+            <section className="side-panel-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">Position Preset</p>
+                  <h3>位置预设</h3>
+                </div>
+              </div>
+              <label className="field">
+                <span>当前位置预设</span>
+                <select
+                  aria-label="当前位置预设"
+                  value={appState.settings.positionPresetId}
+                  onChange={(event) => handlePositionPresetChange(event.target.value)}
+                >
+                  {defaultPositionPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="muted">{currentPositionPreset.description}</p>
+            </section>
+
+            <section className="side-panel-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">字段列表</p>
+                  <h3>默认字段范围</h3>
+                </div>
+              </div>
+              <div className="number-field-list">
+                {appState.numberFields.map((field) => (
+                  <button
+                    key={field.id}
+                    type="button"
+                    className={
+                      field.id === activeNumberField?.id ? 'number-field-card active' : 'number-field-card'
+                    }
+                    onClick={() => handleSelectNumberField(field.id)}
+                  >
+                    <strong>{field.label}</strong>
+                    <span>{formatNumberRange(field)}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </aside>
+
+          <section className="builder-main-card settings-main-card">
+            {activeNumberField ? (
+              <section className="settings-section-card">
+                <div className="section-title-row">
+                  <div>
+                    <p className="eyebrow">当前字段配置</p>
+                    <h3>{activeNumberField.label}</h3>
+                  </div>
+                  <div className="inline-action-group">
+                    <button
+                      type="button"
+                      className="ghost-button compact-button"
+                      onClick={() => handleResetNumberField(activeNumberField.id)}
+                    >
+                      恢复当前
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button compact-button"
+                      onClick={handleResetAllNumberFields}
+                    >
+                      全部恢复
+                    </button>
+                  </div>
+                </div>
+
+                {activeNumberField.kind === 'range' ? (
+                  <div className="number-config-grid">
+                    <label className="field">
+                      <span>最小值</span>
+                      <input
+                        aria-label="最小值"
+                        inputMode="numeric"
+                        value={numberFieldDraft.minText}
+                        onChange={(event) =>
+                          handleRangeFieldDraftChange('min', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>最大值</span>
+                      <input
+                        aria-label="最大值"
+                        inputMode="numeric"
+                        value={numberFieldDraft.maxText}
+                        onChange={(event) =>
+                          handleRangeFieldDraftChange('max', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>默认值</span>
+                      <input
+                        aria-label="默认值"
+                        inputMode="numeric"
+                        value={numberFieldDraft.defaultText}
+                        onChange={(event) =>
+                          handleRangeFieldDraftChange('defaultValue', event.target.value)
+                        }
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="number-config-grid">
+                    <label className="field number-config-span">
+                      <span>可选项</span>
+                      <textarea
+                        aria-label="可选项"
+                        rows={5}
+                        value={numberFieldDraft.optionsText}
+                        onChange={(event) => handleOptionListChange(event.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>默认值</span>
+                      <select
+                        aria-label="默认值"
+                        value={String(activeNumberField.defaultValue)}
+                        onChange={(event) => handleOptionDefaultChange(event.target.value)}
+                      >
+                        {(activeNumberField.options ?? []).map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
+
+                <div className="settings-stat-grid">
+                  <article className="current-result-card">
+                    <p className="eyebrow">配置预览</p>
+                    <div className="result-stat-row">
+                      <span>范围</span>
+                      <strong>{formatNumberRange(activeNumberField)}</strong>
+                    </div>
+                    <div className="result-stat-row">
+                      <span>默认值</span>
+                      <strong>
+                        {formatNumberValue(activeNumberField, activeNumberField.defaultValue)}
+                      </strong>
+                    </div>
+                    <div className="result-stat-row">
+                      <span>当前结果</span>
+                      <strong>
+                        {appState.numberSession.results[activeNumberField.id]
+                          ? formatNumberValue(
+                              activeNumberField,
+                              appState.numberSession.results[activeNumberField.id].value,
+                            )
+                          : '等待抽取'}
+                      </strong>
+                    </div>
+                  </article>
+
+                  <article className="current-result-card">
+                    <p className="eyebrow">结果操作</p>
+                    <div className="compact-action-column">
+                      <button
+                        type="button"
+                        className="ghost-button compact-button"
+                        onClick={() => handleClearNumberFieldResult(activeNumberField.id)}
+                      >
+                        清空当前结果
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button compact-button"
+                        onClick={handleClearAllNumberResults}
+                      >
+                        清空全部结果
+                      </button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            ) : null}
+
+            <section className="settings-section-card">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">2KRatings</p>
+                  <h3>导入球员数值</h3>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={() => {
+                    setImportText('')
+                    setImportFeedback('')
+                  }}
+                >
+                  清空文本
+                </button>
+              </div>
+
+              <label className="field">
+                <span>粘贴 2KRatings 文本</span>
+                <textarea
+                  aria-label="粘贴 2KRatings 文本"
+                  rows={10}
+                  placeholder="把 2KRatings 球员页复制后粘贴到这里"
+                  value={importText}
+                  onChange={(event) => setImportText(event.target.value)}
+                />
+              </label>
+
+              <div className="compact-action-row">
+                <button type="button" className="compact-button" onClick={handleImport2KRatingsPlayer}>
+                  导入 2KRatings 球员
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={() => handleChangeView(activeRecommendedTemplate ? 'builder' : 'home')}
+                >
+                  回到模板创建
+                </button>
+              </div>
+
+              {importFeedback ? <p className="muted success-note">{importFeedback}</p> : null}
+            </section>
           </section>
         </section>
       </main>
@@ -675,12 +1094,20 @@ function App() {
     }))
   }
 
+  function handleChangeView(view: PageView) {
+    cancelResultFlow()
+    setActiveView(view)
+  }
+
   function handleCreateTemplate(template: RecommendedTemplate) {
     setActiveTemplateId(null)
     setWheelRotation(0)
     setWheelHighlight('')
     setWheelSelectedItem('')
-    setDrawResultModal(emptyDrawResultModal)
+    cancelResultFlow()
+    setPlayerSearchQuery('')
+    setImportText('')
+    setImportFeedback('')
     setAppState((currentState) => ({
       ...currentState,
       session: createSession(template, template.featuredFieldIds),
@@ -744,7 +1171,7 @@ function App() {
     setWheelSelectedItem(player?.name ?? selectedPlayer?.name ?? '')
     await sleep(180)
     setIsWheelSpinning(false)
-    setDrawResultModal({
+    await runResultFlow({
       isOpen: true,
       mode: 'builder',
       fieldLabel: currentField.label,
@@ -795,7 +1222,7 @@ function App() {
       }
     })
     setActiveTemplateId(nextTemplate.id)
-    setActiveView('library')
+    handleChangeView('library')
   }
 
   function handleOpenTemplate(template: SavedTemplate) {
@@ -805,7 +1232,10 @@ function App() {
     setWheelRotation(0)
     setWheelHighlight('')
     setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
-    setDrawResultModal(emptyDrawResultModal)
+    cancelResultFlow()
+    setPlayerSearchQuery('')
+    setImportText('')
+    setImportFeedback('')
     setAppState((currentState) => ({
       ...currentState,
       session: nextSession,
@@ -828,17 +1258,206 @@ function App() {
     const field = appState.numberFields.find((item) => item.id === fieldId)
     const result = field ? appState.numberSession.results[field.id] : undefined
 
-    setNumberWheelRotation(0)
     setNumberWheelHighlight(field ? formatNumberRange(field) : '')
-    setNumberWheelSelectedItem(
-      field && result ? formatWheelItem(result.value) : '',
-    )
-    setDrawResultModal(emptyDrawResultModal)
+    setNumberWheelSelectedItem(field && result ? formatWheelItem(result.value) : '')
+    cancelResultFlow()
     setAppState((currentState) => ({
       ...currentState,
       numberSession: {
         ...currentState.numberSession,
         activeFieldId: fieldId,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  function handleRangeFieldDraftChange(
+    key: 'min' | 'max' | 'defaultValue',
+    value: string,
+  ) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setNumberFieldDraft((currentDraft) => ({
+      ...currentDraft,
+      [`${key}Text`]: value,
+    }))
+
+    if (!activeNumberField || activeNumberField.kind !== 'range') {
+      return
+    }
+
+    const parsedValue = Number(value)
+
+    if (Number.isNaN(parsedValue)) {
+      return
+    }
+
+    setAppState((currentState) => {
+      const nextFields = currentState.numberFields.map((field) => {
+        if (field.id !== activeNumberField.id || field.kind !== 'range') {
+          return field
+        }
+
+        const nextField = { ...field, [key]: parsedValue }
+        const min = Math.min(nextField.min ?? 0, nextField.max ?? nextField.min ?? 0)
+        const max = Math.max(nextField.min ?? nextField.max ?? 0, nextField.max ?? 0)
+        const defaultValue = clampNumber(
+          Number(nextField.defaultValue ?? min),
+          min,
+          max,
+        )
+
+        return {
+          ...nextField,
+          min,
+          max,
+          defaultValue,
+        }
+      })
+
+      return {
+        ...currentState,
+        numberFields: nextFields,
+        numberSession: normalizeNumberSessionResults(
+          currentState.numberSession,
+          nextFields,
+        ),
+      }
+    })
+  }
+
+  function handleOptionListChange(value: string) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setNumberFieldDraft((currentDraft) => ({
+      ...currentDraft,
+      optionsText: value,
+    }))
+
+    if (!activeNumberField || activeNumberField.kind !== 'options') {
+      return
+    }
+
+    const nextOptions = value
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean)
+
+    if (nextOptions.length === 0) {
+      return
+    }
+
+    setAppState((currentState) => {
+      const nextFields = currentState.numberFields.map((field) => {
+        if (field.id !== activeNumberField.id || field.kind !== 'options') {
+          return field
+        }
+
+        return {
+          ...field,
+          options: nextOptions,
+          defaultValue: nextOptions.includes(String(field.defaultValue))
+            ? field.defaultValue
+            : nextOptions[0],
+        }
+      })
+
+      return {
+        ...currentState,
+        numberFields: nextFields,
+        numberSession: normalizeNumberSessionResults(
+          currentState.numberSession,
+          nextFields,
+        ),
+      }
+    })
+  }
+
+  function handleOptionDefaultChange(value: string) {
+    if (!activeNumberField || activeNumberField.kind !== 'options') {
+      return
+    }
+
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => ({
+      ...currentState,
+      numberFields: currentState.numberFields.map((field) =>
+        field.id === activeNumberField.id && field.kind === 'options'
+          ? {
+              ...field,
+              defaultValue: value,
+            }
+          : field,
+      ),
+    }))
+  }
+
+  function handleResetNumberField(fieldId: string) {
+    const fallbackField = getPresetScopedDefaultFields(appState.settings.positionPresetId).find(
+      (field) => field.id === fieldId,
+    )
+
+    if (!fallbackField) {
+      return
+    }
+
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => {
+      const nextFields = currentState.numberFields.map((field) =>
+        field.id === fieldId ? structuredClone(fallbackField) : field,
+      )
+
+      return {
+        ...currentState,
+        numberFields: nextFields,
+        numberSession: normalizeNumberSessionResults(
+          currentState.numberSession,
+          nextFields,
+        ),
+      }
+    })
+  }
+
+  function handleResetAllNumberFields() {
+    const nextFields = getPresetScopedDefaultFields(appState.settings.positionPresetId)
+
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => ({
+      ...currentState,
+      numberFields: nextFields,
+      numberSession: normalizeNumberSessionResults(
+        currentState.numberSession,
+        nextFields,
+      ),
+    }))
+  }
+
+  function handleClearNumberFieldResult(fieldId: string) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => ({
+      ...currentState,
+      numberSession: {
+        ...currentState.numberSession,
+        results: Object.fromEntries(
+          Object.entries(currentState.numberSession.results).filter(([id]) => id !== fieldId),
+        ),
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  function handleClearAllNumberResults() {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => ({
+      ...currentState,
+      numberSession: {
+        ...currentState.numberSession,
+        results: {},
         updatedAt: new Date().toISOString(),
       },
     }))
@@ -894,7 +1513,7 @@ function App() {
 
     await sleep(120)
     setIsNumberWheelSpinning(false)
-    setDrawResultModal({
+    await runResultFlow({
       isOpen: true,
       mode: 'number',
       fieldLabel: activeNumberField.label,
@@ -913,26 +1532,33 @@ function App() {
       return
     }
 
-    // 只有在用户确认看完当前结果后，才切到下一项，避免转盘上下文丢失。
-    if (drawResultModal.mode === 'builder' && drawResultModal.pendingBuilderFieldIndex !== null) {
-      const nextSession = {
-        ...appState.session,
-        currentFieldIndex: drawResultModal.pendingBuilderFieldIndex,
-      }
+    resultFlowTokenRef.current += 1
+    setIsResultTransitioning(false)
+    finalizeResultFlow(drawResultModal)
+  }
 
-      setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
+  function finalizeResultFlow(modalState: DrawResultModalState) {
+    if (modalState.mode === 'builder' && modalState.pendingBuilderFieldIndex !== null) {
+      const nextFieldIndex = modalState.pendingBuilderFieldIndex
+
+      setWheelSelectedItem('')
       setWheelHighlight('')
-      updateSession(nextSession)
+      setAppState((currentState) => ({
+        ...currentState,
+        session: {
+          ...currentState.session,
+          currentFieldIndex: nextFieldIndex,
+          updatedAt: new Date().toISOString(),
+        },
+      }))
     }
 
-    if (drawResultModal.mode === 'number' && drawResultModal.pendingNumberFieldId) {
-      const nextFieldId = drawResultModal.pendingNumberFieldId
+    if (modalState.mode === 'number' && modalState.pendingNumberFieldId) {
+      const nextFieldId = modalState.pendingNumberFieldId
       const nextField = appState.numberFields.find((field) => field.id === nextFieldId) ?? null
-      const nextResult = nextField ? appState.numberSession.results[nextField.id] : undefined
 
-      setNumberWheelRotation(0)
       setNumberWheelHighlight(nextField ? formatNumberRange(nextField) : '')
-      setNumberWheelSelectedItem(nextResult ? formatWheelItem(nextResult.value) : '')
+      setNumberWheelSelectedItem('')
       setAppState((currentState) => ({
         ...currentState,
         numberSession: {
@@ -952,9 +1578,110 @@ function App() {
       currentFieldIndex: index,
     }
 
+    cancelResultFlow()
     setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
     setWheelHighlight('')
     updateSession(nextSession)
+  }
+
+  function handleAddCandidatePlayer(playerId: string) {
+    if (appState.session.candidatePlayerIds.includes(playerId)) {
+      return
+    }
+
+    updateCandidatePlayers([...appState.session.candidatePlayerIds, playerId])
+  }
+
+  function handleRemoveCandidatePlayer(playerId: string) {
+    if (appState.session.candidatePlayerIds.length <= 1) {
+      return
+    }
+
+    updateCandidatePlayers(
+      appState.session.candidatePlayerIds.filter((candidateId) => candidateId !== playerId),
+    )
+  }
+
+  function updateCandidatePlayers(candidatePlayerIds: string[]) {
+    setAppState((currentState) => {
+      const nextSession = {
+        ...currentState.session,
+        candidatePlayerIds,
+        updatedAt: new Date().toISOString(),
+      }
+
+      return {
+        ...currentState,
+        session: nextSession,
+        recommendedTemplates: currentState.recommendedTemplates.map((template) =>
+          template.id === currentState.session.recommendedTemplateId
+            ? {
+                ...template,
+                candidatePlayerIds,
+              }
+            : template,
+        ),
+      }
+    })
+  }
+
+  function handleResetCandidatePool() {
+    const fallbackTemplate = defaultRecommendedTemplates.find(
+      (template) => template.id === activeRecommendedTemplate?.id,
+    )
+
+    if (!fallbackTemplate) {
+      return
+    }
+
+    updateCandidatePlayers([...fallbackTemplate.candidatePlayerIds])
+    setPlayerSearchQuery('')
+  }
+
+  function handleImport2KRatingsPlayer() {
+    if (!importText.trim()) {
+      setImportFeedback('请先粘贴 2KRatings 球员页文本。')
+      return
+    }
+
+    try {
+      const importedPlayer = parse2KRatingsPlayerText(importText)
+
+      setAppState((currentState) => ({
+        ...currentState,
+        players: upsertPlayer(currentState.players, importedPlayer),
+      }))
+      setImportFeedback(`已导入：${importedPlayer.name}`)
+      setPlayerSearchQuery(importedPlayer.name)
+      setImportText('')
+    } catch {
+      setImportFeedback('导入失败，请确认粘贴的是完整的 2KRatings 球员页文本。')
+    }
+  }
+
+  async function runResultFlow(modalState: DrawResultModalState) {
+    const token = resultFlowTokenRef.current + 1
+    resultFlowTokenRef.current = token
+    setIsResultTransitioning(true)
+
+    await sleep(500)
+
+    if (resultFlowTokenRef.current !== token) {
+      return
+    }
+
+    setDrawResultModal(modalState)
+    setIsResultTransitioning(false)
+  }
+
+  function cancelResultFlow() {
+    resultFlowTokenRef.current += 1
+    setIsResultTransitioning(false)
+    setDrawResultModal(emptyDrawResultModal)
+  }
+
+  function handleBackToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   function handleCoverUpload(templateId: string, file: File | null) {
@@ -980,6 +1707,27 @@ function App() {
       }))
     }
     reader.readAsDataURL(file)
+  }
+
+  function handlePositionPresetChange(presetId: string) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => {
+      const nextFields = applyPositionPresetToFields(
+        structuredClone(currentState.numberFields),
+        presetId,
+      )
+
+      return {
+        ...currentState,
+        settings: {
+          ...currentState.settings,
+          positionPresetId: presetId,
+        },
+        numberFields: nextFields,
+        numberSession: normalizeNumberSessionResults(currentState.numberSession, nextFields),
+      }
+    })
   }
 }
 
@@ -1027,7 +1775,10 @@ function createNumberResultRow(
 
 function sleep(duration: number) {
   return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, duration)
+    const scaledDuration =
+      import.meta.env.MODE === 'test' ? Math.max(0, duration * 0.1) : duration
+
+    window.setTimeout(resolve, scaledDuration)
   })
 }
 
@@ -1088,6 +1839,111 @@ function formatNumberValue(field: NumberDrawField, value: AttributeValue) {
 
 function formatWheelItem(value: AttributeValue) {
   return String(value)
+}
+
+function searchPlayers(players: PlayerProfile[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase()
+
+  if (!normalizedQuery) {
+    return players
+  }
+
+  return players.filter((player) =>
+    [
+      player.name,
+      player.position,
+      player.era,
+      ...player.aliases,
+      ...player.tags,
+    ].some((value) => value.toLowerCase().includes(normalizedQuery)),
+  )
+}
+
+function upsertPlayer(players: PlayerProfile[], nextPlayer: PlayerProfile) {
+  const existingIndex = players.findIndex((player) =>
+    player.id === nextPlayer.id ||
+    player.name === nextPlayer.name ||
+    player.aliases.some((alias) => nextPlayer.aliases.includes(alias)),
+  )
+
+  if (existingIndex === -1) {
+    return [nextPlayer, ...players]
+  }
+
+  return players.map((player, index) => (index === existingIndex ? nextPlayer : player))
+}
+
+function createNumberFieldDraft(field: NumberDrawField | null): NumberFieldDraft {
+  if (!field) {
+    return {
+      minText: '',
+      maxText: '',
+      defaultText: '',
+      optionsText: '',
+    }
+  }
+
+  return {
+    minText: field.kind === 'range' ? String(field.min ?? '') : '',
+    maxText: field.kind === 'range' ? String(field.max ?? '') : '',
+    defaultText: String(field.defaultValue ?? ''),
+    optionsText: field.kind === 'options' ? (field.options ?? []).join('\n') : '',
+  }
+}
+
+function getPresetScopedDefaultFields(positionPresetId: string) {
+  return applyPositionPresetToFields(
+    structuredClone(defaultNumberFields),
+    positionPresetId || defaultBuildSettings.positionPresetId,
+  )
+}
+
+function normalizeNumberSessionResults(
+  session: AppState['numberSession'],
+  fields: NumberDrawField[],
+) {
+  const fieldMap = new Map(fields.map((field) => [field.id, field]))
+
+  return {
+    ...session,
+    results: Object.fromEntries(
+      Object.entries(session.results).map(([fieldId, result]) => {
+        const field = fieldMap.get(fieldId)
+
+        if (!field) {
+          return [fieldId, result]
+        }
+
+        if (field.kind === 'range' && typeof result.value === 'number') {
+          return [
+            fieldId,
+            {
+              ...result,
+              value: clampNumber(result.value, field.min ?? result.value, field.max ?? result.value),
+            },
+          ]
+        }
+
+        if (field.kind === 'options') {
+          const options = field.options ?? []
+          return [
+            fieldId,
+            {
+              ...result,
+              value: options.includes(String(result.value)) ? result.value : field.defaultValue,
+            },
+          ]
+        }
+
+        return [fieldId, result]
+      }),
+    ),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }
 
 function createCompactSpinSequence(
