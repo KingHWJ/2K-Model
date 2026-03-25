@@ -25,6 +25,33 @@ import type {
 
 type PageView = 'home' | 'builder' | 'number-draw' | 'tags' | 'library'
 
+// 抽取结果先进入弹窗确认，关闭后才推进到下一字段。
+interface DrawResultModalState {
+  isOpen: boolean
+  mode: 'builder' | 'number' | null
+  fieldLabel: string
+  valueText: string
+  detailLabel: string
+  detailText: string
+  noteText: string
+  nextButtonLabel: string
+  pendingBuilderFieldIndex: number | null
+  pendingNumberFieldId: string | null
+}
+
+const emptyDrawResultModal: DrawResultModalState = {
+  isOpen: false,
+  mode: null,
+  fieldLabel: '',
+  valueText: '',
+  detailLabel: '',
+  detailText: '',
+  noteText: '',
+  nextButtonLabel: '下一项',
+  pendingBuilderFieldIndex: null,
+  pendingNumberFieldId: null,
+}
+
 function App() {
   const [appState, setAppState] = useState<AppState>(() =>
     loadAppState(window.localStorage, createDefaultAppState()),
@@ -39,6 +66,7 @@ function App() {
   const [numberWheelHighlight, setNumberWheelHighlight] = useState('')
   const [numberWheelSelectedItem, setNumberWheelSelectedItem] = useState('')
   const [isNumberWheelSpinning, setIsNumberWheelSpinning] = useState(false)
+  const [drawResultModal, setDrawResultModal] = useState<DrawResultModalState>(emptyDrawResultModal)
 
   useEffect(() => {
     saveAppState(window.localStorage, appState)
@@ -117,6 +145,7 @@ function App() {
       {activeView === 'number-draw' ? renderNumberDrawView() : null}
       {activeView === 'tags' ? renderTagsView() : null}
       {activeView === 'library' ? renderLibraryView() : null}
+      {drawResultModal.isOpen ? renderDrawResultModal() : null}
     </div>
   )
 
@@ -276,7 +305,7 @@ function App() {
                 <button
                   type="button"
                   onClick={handleDrawCurrentField}
-                  disabled={candidatePlayers.length === 0 || isWheelSpinning}
+                  disabled={candidatePlayers.length === 0 || isWheelSpinning || drawResultModal.isOpen}
                 >
                   {isWheelSpinning ? '抽取中...' : '抽取当前字段'}
                 </button>
@@ -307,7 +336,7 @@ function App() {
               <button
                 type="button"
                 onClick={handleDrawCurrentField}
-                disabled={candidatePlayers.length === 0 || isWheelSpinning}
+                disabled={candidatePlayers.length === 0 || isWheelSpinning || drawResultModal.isOpen}
               >
                 {isWheelSpinning ? '抽取中...' : '开始抽取'}
               </button>
@@ -459,7 +488,7 @@ function App() {
                 <button
                   type="button"
                   onClick={handleDrawNumberField}
-                  disabled={!activeNumberField || isNumberWheelSpinning}
+                  disabled={!activeNumberField || isNumberWheelSpinning || drawResultModal.isOpen}
                 >
                   {isNumberWheelSpinning ? '抽取中...' : '抽取当前字段'}
                 </button>
@@ -498,7 +527,7 @@ function App() {
               <button
                 type="button"
                 onClick={handleDrawNumberField}
-                disabled={!activeNumberField || isNumberWheelSpinning}
+                disabled={!activeNumberField || isNumberWheelSpinning || drawResultModal.isOpen}
               >
                 {isNumberWheelSpinning ? '抽取中...' : '开始抽取'}
               </button>
@@ -525,6 +554,59 @@ function App() {
           </section>
         </section>
       </main>
+    )
+  }
+
+  function renderDrawResultModal() {
+    return (
+      <div className="result-modal-backdrop" role="presentation">
+        <section
+          className="result-modal-card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="draw-result-title"
+        >
+          <div className="result-modal-header">
+            <div>
+              <p className="eyebrow">本次抽取</p>
+              <h2 id="draw-result-title">抽取结果</h2>
+            </div>
+            <button
+              type="button"
+              className="modal-close-button"
+              aria-label="关闭弹窗"
+              onClick={handleCloseResultModal}
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="result-modal-body">
+            <div className="result-stat-row">
+              <span>字段</span>
+              <strong>{drawResultModal.fieldLabel}</strong>
+            </div>
+            <div className="result-stat-row">
+              <span>最终值</span>
+              <strong className="result-value-cell">{drawResultModal.valueText}</strong>
+            </div>
+            <div className="result-stat-row">
+              <span>{drawResultModal.detailLabel}</span>
+              <strong>{drawResultModal.detailText}</strong>
+            </div>
+            <div className="result-stat-row">
+              <span>备注</span>
+              <strong>{drawResultModal.noteText}</strong>
+            </div>
+          </div>
+
+          <div className="result-modal-actions">
+            <button type="button" className="ghost-button" onClick={handleCloseResultModal}>
+              {drawResultModal.nextButtonLabel}
+            </button>
+          </div>
+        </section>
+      </div>
     )
   }
 
@@ -598,6 +680,7 @@ function App() {
     setWheelRotation(0)
     setWheelHighlight('')
     setWheelSelectedItem('')
+    setDrawResultModal(emptyDrawResultModal)
     setAppState((currentState) => ({
       ...currentState,
       session: createSession(template, template.featuredFieldIds),
@@ -641,10 +724,17 @@ function App() {
     )
     const assignment = nextSession.fieldAssignments[currentField.id]
     const player = appState.players.find((item) => item.id === assignment?.playerId)
+    const pendingBuilderFieldIndex =
+      nextSession.currentFieldIndex !== appState.session.currentFieldIndex
+        ? nextSession.currentFieldIndex
+        : null
 
     setAppState((currentState) => ({
       ...currentState,
-      session: nextSession,
+      session: {
+        ...nextSession,
+        currentFieldIndex: currentState.session.currentFieldIndex,
+      },
     }))
     setWheelHighlight(
       player
@@ -654,6 +744,24 @@ function App() {
     setWheelSelectedItem(player?.name ?? selectedPlayer?.name ?? '')
     await sleep(180)
     setIsWheelSpinning(false)
+    setDrawResultModal({
+      isOpen: true,
+      mode: 'builder',
+      fieldLabel: currentField.label,
+      valueText: String(assignment?.value ?? '等待抽取'),
+      detailLabel: '来源球员',
+      detailText: player?.name ?? '等待抽取',
+      noteText: player
+        ? String(
+            player.categories.meta?.note ??
+              player.categories.meta?.templateArchetype ??
+              `来自 ${player.name}`,
+          )
+        : '等待抽取',
+      nextButtonLabel: pendingBuilderFieldIndex !== null ? '下一项' : '完成',
+      pendingBuilderFieldIndex,
+      pendingNumberFieldId: null,
+    })
   }
 
   function handleSaveTemplate() {
@@ -697,6 +805,7 @@ function App() {
     setWheelRotation(0)
     setWheelHighlight('')
     setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
+    setDrawResultModal(emptyDrawResultModal)
     setAppState((currentState) => ({
       ...currentState,
       session: nextSession,
@@ -724,6 +833,7 @@ function App() {
     setNumberWheelSelectedItem(
       field && result ? formatWheelItem(result.value) : '',
     )
+    setDrawResultModal(emptyDrawResultModal)
     setAppState((currentState) => ({
       ...currentState,
       numberSession: {
@@ -766,7 +876,6 @@ function App() {
       ...currentState,
       numberSession: {
         ...currentState.numberSession,
-        activeFieldId: nextField?.id ?? currentState.numberSession.activeFieldId,
         results: {
           ...currentState.numberSession.results,
           [activeNumberField.id]: {
@@ -784,13 +893,57 @@ function App() {
     )
 
     await sleep(120)
-    if (nextField) {
-      const nextResult = appState.numberSession.results[nextField.id]
-      setNumberWheelRotation(0)
-      setNumberWheelHighlight(formatNumberRange(nextField))
-      setNumberWheelSelectedItem(nextResult ? formatWheelItem(nextResult.value) : '')
-    }
     setIsNumberWheelSpinning(false)
+    setDrawResultModal({
+      isOpen: true,
+      mode: 'number',
+      fieldLabel: activeNumberField.label,
+      valueText: formatNumberValue(activeNumberField, value),
+      detailLabel: '范围',
+      detailText: formatNumberRange(activeNumberField),
+      noteText: activeNumberField.note,
+      nextButtonLabel: nextField ? '下一项' : '完成',
+      pendingBuilderFieldIndex: null,
+      pendingNumberFieldId: nextField?.id ?? null,
+    })
+  }
+
+  function handleCloseResultModal() {
+    if (!drawResultModal.isOpen) {
+      return
+    }
+
+    // 只有在用户确认看完当前结果后，才切到下一项，避免转盘上下文丢失。
+    if (drawResultModal.mode === 'builder' && drawResultModal.pendingBuilderFieldIndex !== null) {
+      const nextSession = {
+        ...appState.session,
+        currentFieldIndex: drawResultModal.pendingBuilderFieldIndex,
+      }
+
+      setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
+      setWheelHighlight('')
+      updateSession(nextSession)
+    }
+
+    if (drawResultModal.mode === 'number' && drawResultModal.pendingNumberFieldId) {
+      const nextFieldId = drawResultModal.pendingNumberFieldId
+      const nextField = appState.numberFields.find((field) => field.id === nextFieldId) ?? null
+      const nextResult = nextField ? appState.numberSession.results[nextField.id] : undefined
+
+      setNumberWheelRotation(0)
+      setNumberWheelHighlight(nextField ? formatNumberRange(nextField) : '')
+      setNumberWheelSelectedItem(nextResult ? formatWheelItem(nextResult.value) : '')
+      setAppState((currentState) => ({
+        ...currentState,
+        numberSession: {
+          ...currentState.numberSession,
+          activeFieldId: nextFieldId,
+          updatedAt: new Date().toISOString(),
+        },
+      }))
+    }
+
+    setDrawResultModal(emptyDrawResultModal)
   }
 
   function handleSelectField(index: number) {

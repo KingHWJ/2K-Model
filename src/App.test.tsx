@@ -38,14 +38,14 @@ describe('App', () => {
     expect(screen.getByText('当前字段')).toBeInTheDocument()
   }, 10000)
 
-  it('抽取身高后会把结果写入表格并进入下一字段', async () => {
+  it('模板创建会先弹出结果窗，关闭后才进入下一字段', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()
     render(<App />)
 
     await user.click(screen.getAllByRole('button', { name: '基于此模板创建' })[0])
     await user.click(screen.getByRole('button', { name: '抽取当前字段' }))
-    await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })
+    const resultModal = await screen.findByRole('dialog', { name: '抽取结果' }, { timeout: 5000 })
 
     const resultTable = document.querySelector('.result-table')
 
@@ -53,6 +53,9 @@ describe('App', () => {
     expect(within(resultTable as HTMLElement).getByText('身高')).toBeInTheDocument()
     expect(within(resultTable as HTMLElement).getByText('198cm')).toBeInTheDocument()
     expect(within(resultTable as HTMLElement).getByText('迈克尔·乔丹')).toBeInTheDocument()
+    expect(within(resultModal).getByText('来源球员')).toBeInTheDocument()
+    expect(within(resultModal).getByText('迈克尔·乔丹')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '下一项' }))
     expect(screen.getByRole('heading', { name: '体重' })).toBeInTheDocument()
   }, 10000)
 
@@ -81,7 +84,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '抽取当前字段' })).toBeInTheDocument()
   }, 10000)
 
-  it('数值直抽会在字段范围内抽出最终数字并写入结果表并自动跳到下一项', async () => {
+  it('数值直抽会先弹出结果窗，关闭后才进入下一字段', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()
     render(<App />)
@@ -89,10 +92,13 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '数值直抽' }))
     await user.click(screen.getByRole('button', { name: '开始抽取' }))
 
+    const resultModal = await screen.findByRole('dialog', { name: '抽取结果' }, { timeout: 5000 })
     expect((await screen.findAllByText('170 cm', {}, { timeout: 5000 })).length).toBeGreaterThan(0)
-    expect(await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getAllByText('贴近 2K Builder 的身高范围').length).toBeGreaterThan(0)
+    expect(within(resultModal).getByText('范围')).toBeInTheDocument()
     expect(document.querySelectorAll('.number-result-table .result-value-cell').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '下一项' }))
+    expect(await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })).toBeInTheDocument()
   }, 10000)
 
   it('保存模板后会在我的模板里显示结果', async () => {
@@ -102,6 +108,8 @@ describe('App', () => {
 
     await user.click(screen.getAllByRole('button', { name: '基于此模板创建' })[0])
     await user.click(screen.getByRole('button', { name: '抽取当前字段' }))
+    await screen.findByRole('dialog', { name: '抽取结果' }, { timeout: 5000 })
+    await user.click(screen.getByRole('button', { name: '下一项' }))
     await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '保存模板' })).toBeEnabled()
