@@ -2,17 +2,16 @@ import { describe, expect, it } from 'vitest'
 
 import type {
   AttributeCategory,
-  GenerationSession,
+  BuilderSession,
   PlayerProfile,
-  Preset,
+  RecommendedTemplate,
   SavedTemplate,
 } from '../types'
 import {
-  clampCandidateCount,
+  createBuilderFields,
   createSession,
-  drawAllCategories,
-  drawCandidatePlayerIds,
-  drawCategoryAssignment,
+  drawFieldAssignment,
+  getPlayerValueForField,
   openTemplateSession,
   saveTemplateFromSession,
 } from './builderState'
@@ -23,7 +22,7 @@ const categories: AttributeCategory[] = [
     name: '身体尺寸',
     fields: [
       { key: 'height', label: '身高', defaultValue: '198cm' },
-      { key: 'wingspan', label: '臂展', defaultValue: '210cm' },
+      { key: 'weight', label: '体重', defaultValue: '98kg' },
     ],
   },
   {
@@ -35,177 +34,164 @@ const categories: AttributeCategory[] = [
     ],
   },
   {
-    id: 'defense',
-    name: '防守',
+    id: 'meta',
+    name: '元数据',
     fields: [
-      { key: 'perimeterDefense', label: '外防', defaultValue: 85 },
-      { key: 'steal', label: '抢断', defaultValue: 82 },
+      { key: 'templateArchetype', label: '模板定位', defaultValue: '双向分卫' },
+      { key: 'note', label: '备注', defaultValue: '默认备注' },
     ],
   },
 ]
 
-const players: PlayerProfile[] = [
-  createPlayer('jordan', '迈克尔·乔丹', 99),
-  createPlayer('kobe', '科比·布莱恩特', 98),
-  createPlayer('lebron', '勒布朗·詹姆斯', 99),
-  createPlayer('durant', '凯文·杜兰特', 97),
-]
+const fieldOrder = ['body.height', 'body.weight', 'shooting.midRange']
 
-const preset: Preset = {
-  id: 'legend-mix',
-  name: '传奇融合池',
-  description: '用于测试的传奇球员池。',
-  defaultCandidateCount: 3,
-  availablePlayerIds: players.map((player) => player.id),
-  availableCategoryIds: categories.map((category) => category.id),
-  tagLibrary: ['半神半人', '持球投射核心'],
+const template: RecommendedTemplate = {
+  id: 'two-way-guard',
+  name: '双向分卫模板',
+  subtitle: '中投、爆发和外防兼具',
+  description: '用经典分卫思路来构建首发模板。',
+  featuredPlayers: ['迈克尔·乔丹', '科比·布莱恩特'],
+  candidatePlayerIds: ['jordan', 'kobe'],
+  tags: ['双向分卫'],
+  defaultCover: 'cover://default',
+  customCover: null,
+  featuredFieldIds: fieldOrder,
 }
 
+const players: PlayerProfile[] = [
+  createPlayer('jordan', '迈克尔·乔丹', '198cm', '98kg', 97),
+  createPlayer('kobe', '科比·布莱恩特', '198cm', '96kg', 98),
+]
+
 describe('builderState', () => {
-  it('会按球员池上限修正候选人数', () => {
-    expect(clampCandidateCount(0, 4)).toBe(1)
-    expect(clampCandidateCount(2, 4)).toBe(2)
-    expect(clampCandidateCount(8, 4)).toBe(4)
+  it('会按字段顺序生成转盘字段定义', () => {
+    const fields = createBuilderFields(categories, fieldOrder)
+
+    expect(fields.map((field) => field.id)).toEqual(fieldOrder)
+    expect(fields[0].label).toBe('身高')
   })
 
-  it('会去重抽取候选球员', () => {
-    const draws = [0.01, 0.01, 0.62, 0.62, 0.92]
-    const result = drawCandidatePlayerIds(
-      players.map((player) => player.id),
-      3,
-      () => draws.shift() ?? 0.25,
-    )
-
-    expect(result).toEqual(['jordan', 'lebron', 'durant'])
-  })
-
-  it('会为单个属性大类记录来源球员和抽取日志', () => {
+  it('会按当前字段抽取来源球员并记录最终值', () => {
     const session = createReadySession()
 
-    const nextSession = drawCategoryAssignment(
+    const nextSession = drawFieldAssignment(
       session,
-      'shooting',
+      'body.height',
+      players,
       () => 0.99,
       () => '2026-03-25T10:00:00.000Z',
     )
 
-    expect(nextSession.assignments.shooting.playerId).toBe('durant')
-    expect(nextSession.drawLog.at(-1)).toEqual({
-      type: 'category',
-      targetId: 'shooting',
-      playerId: 'durant',
-      createdAt: '2026-03-25T10:00:00.000Z',
-    })
+    expect(nextSession.fieldAssignments['body.height'].playerId).toBe('kobe')
+    expect(nextSession.fieldAssignments['body.height'].value).toBe('198cm')
+    expect(nextSession.currentFieldIndex).toBe(1)
   })
 
-  it('会按固定顺序一键抽完全部属性大类', () => {
-    const session = createReadySession()
-    const draws = [0.1, 0.5, 0.9]
-
-    const nextSession = drawAllCategories(
-      session,
-      categories.map((category) => category.id),
-      () => draws.shift() ?? 0.2,
-      () => '2026-03-25T10:00:00.000Z',
-    )
-
-    expect(Object.keys(nextSession.assignments)).toEqual([
-      'body',
-      'shooting',
-      'defense',
-    ])
-    expect(nextSession.assignments.body.playerId).toBe('jordan')
-    expect(nextSession.assignments.shooting.playerId).toBe('kobe')
-    expect(nextSession.assignments.defense.playerId).toBe('durant')
+  it('可以直接读取球员某个字段的真实值', () => {
+    expect(getPlayerValueForField(players[0], 'shooting.midRange')).toBe(97)
+    expect(getPlayerValueForField(players[1], 'body.weight')).toBe('96kg')
   })
 
-  it('会从当前会话生成可继续编辑的模板', () => {
-    const session = drawAllCategories(
+  it('会把当前会话保存成可继续编辑的模板', () => {
+    const session = drawFieldAssignment(
       createReadySession(),
-      categories.map((category) => category.id),
+      'body.height',
+      players,
       () => 0.01,
       () => '2026-03-25T10:00:00.000Z',
     )
 
-    const template = saveTemplateFromSession(
+    const savedTemplate = saveTemplateFromSession(
       session,
+      [template],
       players,
       categories,
       '模板1',
       () => 'template-1',
-      () => '2026-03-25T10:05:00.000Z',
+      () => '2026-03-25T10:10:00.000Z',
     )
 
-    expect(template.name).toBe('模板1')
-    expect(template.summary.overall).toBe(99)
-    expect(template.summary.tags).toContain('半神半人')
-    expect(template.summary.categorySources).toHaveLength(3)
+    expect(savedTemplate.coverImage).toBe('cover://default')
+    expect(savedTemplate.summary.recommendedTemplateName).toBe('双向分卫模板')
+    expect(savedTemplate.summary.fieldResults[0].fieldLabel).toBe('身高')
   })
 
-  it('会把模板重新恢复成编辑中的会话', () => {
-    const template: SavedTemplate = {
+  it('会把模板重新恢复到创建页会话', () => {
+    const templateRecord: SavedTemplate = {
       id: 'template-1',
       name: '模板1',
-      presetId: preset.id,
-      candidateCount: 3,
-      candidatePlayerIds: ['jordan', 'kobe', 'durant'],
-      assignments: {
-        body: { playerId: 'jordan', createdAt: '2026-03-25T10:00:00.000Z' },
-        shooting: { playerId: 'kobe', createdAt: '2026-03-25T10:00:00.000Z' },
+      recommendedTemplateId: template.id,
+      candidatePlayerIds: ['jordan', 'kobe'],
+      fieldOrder,
+      currentFieldIndex: 1,
+      fieldAssignments: {
+        'body.height': {
+          fieldId: 'body.height',
+          playerId: 'jordan',
+          value: '198cm',
+          createdAt: '2026-03-25T10:00:00.000Z',
+        },
       },
+      coverImage: 'cover://default',
       summary: {
-        overall: 98,
-        position: 'SG/SF',
-        tags: ['半神半人', '持球投射核心'],
-        categorySources: [
-          { categoryId: 'body', categoryName: '身体尺寸', playerName: '迈克尔·乔丹' },
-          { categoryId: 'shooting', categoryName: '投篮', playerName: '科比·布莱恩特' },
+        overall: 99,
+        tags: ['双向分卫'],
+        recommendedTemplateName: '双向分卫模板',
+        completedFields: 1,
+        fieldResults: [
+          {
+            fieldId: 'body.height',
+            fieldLabel: '身高',
+            value: '198cm',
+            playerName: '迈克尔·乔丹',
+            note: '关键时刻终结能力顶级',
+          },
         ],
       },
       createdAt: '2026-03-25T10:00:00.000Z',
       updatedAt: '2026-03-25T10:10:00.000Z',
     }
 
-    const session = openTemplateSession(template)
+    const session = openTemplateSession(templateRecord)
 
     expect(session.templateName).toBe('模板1')
-    expect(session.assignments.shooting.playerId).toBe('kobe')
-    expect(session.candidatePlayerIds).toEqual(['jordan', 'kobe', 'durant'])
+    expect(session.currentFieldIndex).toBe(1)
+    expect(session.fieldAssignments['body.height'].playerId).toBe('jordan')
   })
 })
 
-function createPlayer(id: string, name: string, overall: number): PlayerProfile {
+function createPlayer(
+  id: string,
+  name: string,
+  height: string,
+  weight: string,
+  midRange: number,
+): PlayerProfile {
   return {
     id,
     name,
     position: 'SG/SF',
-    overall,
+    overall: 98,
     era: '巅峰赛季',
-    tags: ['半神半人', '持球投射核心'],
+    tags: ['双向分卫'],
     aliases: [id],
     categories: {
+      meta: {
+        templateArchetype: '双向分卫',
+        note: '关键时刻终结能力顶级',
+      },
       body: {
-        height: '198cm',
-        wingspan: '210cm',
+        height,
+        weight,
       },
       shooting: {
-        midRange: overall - 5,
-        threePoint: overall - 6,
-      },
-      defense: {
-        perimeterDefense: overall - 4,
-        steal: overall - 7,
+        midRange,
+        threePoint: midRange - 5,
       },
     },
   }
 }
 
-function createReadySession(): GenerationSession {
-  const session = createSession(preset, categories, () => '2026-03-25T09:55:00.000Z')
-
-  return {
-    ...session,
-    candidatePlayerIds: ['jordan', 'kobe', 'durant'],
-    candidateCount: 3,
-  }
+function createReadySession(): BuilderSession {
+  return createSession(template, fieldOrder, () => '2026-03-25T09:55:00.000Z')
 }

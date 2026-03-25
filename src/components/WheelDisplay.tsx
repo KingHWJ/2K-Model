@@ -8,6 +8,7 @@ interface WheelDisplayProps {
   rotation: number
   isSpinning?: boolean
   highlightText?: string
+  selectedItem?: string
 }
 
 const paletteMap = {
@@ -23,6 +24,7 @@ export function WheelDisplay({
   rotation,
   isSpinning = false,
   highlightText,
+  selectedItem,
 }: WheelDisplayProps) {
   const safeItems = items.length > 0 ? items : ['等待数据']
   const gradient = createConicGradient(safeItems.length, paletteMap[accent])
@@ -42,22 +44,26 @@ export function WheelDisplay({
         <div
           className={isSpinning ? 'wheel-disc spinning' : 'wheel-disc'}
           style={{
+            '--wheel-rotation': `${rotation}deg`,
             backgroundImage: gradient,
             transform: `rotate(${rotation}deg)`,
-          }}
+          } as CSSProperties}
         >
           {safeItems.map((item, index) => (
             <span
               key={`${item}-${index}`}
-              className="wheel-label"
+              className="wheel-label-anchor"
               style={
                 {
-                  '--label-index': index,
-                  '--label-count': safeItems.length,
+                  '--item-angle': `${(360 / safeItems.length) * index}deg`,
                 } as CSSProperties
               }
             >
-              {item}
+              <span
+                className={item === selectedItem ? 'wheel-label active' : 'wheel-label'}
+              >
+                {item}
+              </span>
             </span>
           ))}
           <div className="wheel-core">2K</div>

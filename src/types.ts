@@ -12,6 +12,13 @@ export interface AttributeCategory {
   fields: AttributeField[]
 }
 
+export interface BuilderFieldDefinition {
+  id: string
+  categoryId: string
+  fieldKey: string
+  label: string
+}
+
 export interface PlayerProfile {
   id: string
   name: string
@@ -23,69 +30,90 @@ export interface PlayerProfile {
   categories: Record<string, Record<string, AttributeValue>>
 }
 
-export interface Preset {
+export interface RecommendedTemplate {
   id: string
   name: string
+  subtitle: string
   description: string
-  defaultCandidateCount: number
-  availablePlayerIds: string[]
-  availableCategoryIds: string[]
-  tagLibrary: string[]
+  featuredPlayers: string[]
+  candidatePlayerIds: string[]
+  tags: string[]
+  defaultCover: string
+  customCover: string | null
+  featuredFieldIds: string[]
 }
 
-export interface CategoryAssignment {
+export interface TagDefinition {
+  id: string
+  label: string
+  description: string
+  featuredPlayers: string[]
+  focusFields: string[]
+}
+
+export interface FieldAssignment {
+  fieldId: string
   playerId: string
+  value: AttributeValue
   createdAt: string
 }
 
 export interface DrawLogEntry {
-  type: 'candidate' | 'category'
+  type: 'field'
   targetId: string
   playerId: string
+  value: AttributeValue
   createdAt: string
 }
 
-export interface GenerationSession {
-  presetId: string
+export interface BuilderSession {
+  recommendedTemplateId: string | null
   templateName: string
-  candidateCount: number
   candidatePlayerIds: string[]
-  assignments: Record<string, CategoryAssignment>
+  fieldOrder: string[]
+  currentFieldIndex: number
+  fieldAssignments: Record<string, FieldAssignment>
   drawLog: DrawLogEntry[]
   createdAt: string
   updatedAt: string
 }
 
-export interface TemplateCategorySource {
-  categoryId: string
-  categoryName: string
+export interface TemplateFieldResult {
+  fieldId: string
+  fieldLabel: string
+  value: AttributeValue
   playerName: string
+  note: string
 }
 
 export interface TemplateSummary {
   overall: number
-  position: string
   tags: string[]
-  categorySources: TemplateCategorySource[]
+  recommendedTemplateName: string
+  completedFields: number
+  fieldResults: TemplateFieldResult[]
 }
 
 export interface SavedTemplate {
   id: string
   name: string
-  presetId: string
-  candidateCount: number
+  recommendedTemplateId: string | null
   candidatePlayerIds: string[]
-  assignments: Record<string, CategoryAssignment>
+  fieldOrder: string[]
+  currentFieldIndex: number
+  fieldAssignments: Record<string, FieldAssignment>
+  coverImage: string
   summary: TemplateSummary
   createdAt: string
   updatedAt: string
 }
 
 export interface AppState {
-  version: number
-  presets: Preset[]
+  version: 2
   categories: AttributeCategory[]
   players: PlayerProfile[]
+  recommendedTemplates: RecommendedTemplate[]
+  tagDefinitions: TagDefinition[]
   templates: SavedTemplate[]
-  session: GenerationSession
+  session: BuilderSession
 }

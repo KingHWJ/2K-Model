@@ -1,200 +1,248 @@
 import type {
   AttributeCategory,
-  CategoryAssignment,
+  AttributeValue,
+  BuilderFieldDefinition,
+  BuilderSession,
   DrawLogEntry,
-  GenerationSession,
+  FieldAssignment,
   PlayerProfile,
-  Preset,
+  RecommendedTemplate,
   SavedTemplate,
-  TemplateCategorySource,
+  TemplateFieldResult,
 } from '../types'
 
-export function clampCandidateCount(requested: number, available: number): number {
-  if (available <= 0) {
-    return 1
-  }
-
-  return Math.min(Math.max(requested, 1), available)
-}
-
 export function createSession(
-  preset: Preset,
-  _categories: AttributeCategory[],
+  recommendedTemplate: RecommendedTemplate | null,
+  fieldOrder: string[],
   now: () => string = () => new Date().toISOString(),
-): GenerationSession {
+): BuilderSession {
   const createdAt = now()
 
   return {
-    presetId: preset.id,
-    templateName: '未命名模板',
-    candidateCount: preset.defaultCandidateCount,
-    candidatePlayerIds: [],
-    assignments: {},
+    recommendedTemplateId: recommendedTemplate?.id ?? null,
+    templateName: recommendedTemplate ? `${recommendedTemplate.name} 方案` : '未命名模板',
+    candidatePlayerIds: recommendedTemplate?.candidatePlayerIds ?? [],
+    fieldOrder,
+    currentFieldIndex: 0,
+    fieldAssignments: {},
     drawLog: [],
     createdAt,
     updatedAt: createdAt,
   }
 }
 
-export function drawCandidatePlayerIds(
-  playerIds: string[],
-  requestedCount: number,
-  rng: () => number,
-): string[] {
-  const targetCount = clampCandidateCount(requestedCount, playerIds.length)
-  const result: string[] = []
-  const pickedIds = new Set<string>()
-  let safety = playerIds.length * 10
+export function createBuilderFields(
+  categories: AttributeCategory[],
+  fieldOrder: string[],
+): BuilderFieldDefinition[] {
+  const fieldMap = new Map<string, BuilderFieldDefinition>()
 
-  // 模拟“转盘连续命中”的体验：允许随机数重复，但最终候选人不能重复。
-  while (result.length < targetCount && safety > 0) {
-    const index = Math.floor(rng() * playerIds.length)
-    const pickedPlayerId = playerIds[index]
-
-    if (pickedPlayerId && !pickedIds.has(pickedPlayerId)) {
-      pickedIds.add(pickedPlayerId)
-      result.push(pickedPlayerId)
-    }
-
-    safety -= 1
-  }
-
-  if (result.length < targetCount) {
-    for (const playerId of playerIds) {
-      if (!pickedIds.has(playerId)) {
-        pickedIds.add(playerId)
-        result.push(playerId)
-      }
-
-      if (result.length === targetCount) {
-        break
-      }
+  for (const category of categories) {
+    for (const field of category.fields) {
+      const id = `${category.id}.${field.key}`
+      fieldMap.set(id, {
+        id,
+        categoryId: category.id,
+        fieldKey: field.key,
+        label: field.label,
+      })
     }
   }
 
-  return result
+  return fieldOrder
+    .map((fieldId) => fieldMap.get(fieldId))
+    .filter((field): field is BuilderFieldDefinition => Boolean(field))
 }
 
-export function drawCategoryAssignment(
-  session: GenerationSession,
-  categoryId: string,
+export function drawFieldAssignment(
+  session: BuilderSession,
+  fieldId: string,
+  players: PlayerProfile[],
   rng: () => number,
   now: () => string = () => new Date().toISOString(),
-): GenerationSession {
+): BuilderSession {
   if (session.candidatePlayerIds.length === 0) {
     return session
   }
 
-  const playerId =
-    session.candidatePlayerIds[
-      Math.floor(rng() * session.candidatePlayerIds.length)
-    ]
+  const candidatePlayerId =
+    session.candidatePlayerIds[Math.floor(rng() * session.candidatePlayerIds.length)]
+  const player = players.find((item) => item.id === candidatePlayerId)
+  const value = player ? getPlayerValueForField(player, fieldId) : undefined
+
+  if (!player || value === undefined) {
+    return session
+  }
+
   const createdAt = now()
-  const assignment: CategoryAssignment = {
-    playerId,
+  const assignment: FieldAssignment = {
+    fieldId,
+    playerId: player.id,
+    value,
     createdAt,
   }
   const logEntry: DrawLogEntry = {
-    type: 'category',
-    targetId: categoryId,
-    playerId,
+    type: 'field',
+    targetId: fieldId,
+    playerId: player.id,
+    value,
     createdAt,
+  }
+  const nextAssignments = {
+    ...session.fieldAssignments,
+    [fieldId]: assignment,
   }
 
   return {
     ...session,
-    assignments: {
-      ...session.assignments,
-      [categoryId]: assignment,
-    },
+    fieldAssignments: nextAssignments,
+    currentFieldIndex: findNextFieldIndex(
+      session.fieldOrder,
+      nextAssignments,
+      session.fieldOrder.indexOf(fieldId) + 1,
+    ),
     drawLog: [...session.drawLog, logEntry],
     updatedAt: createdAt,
   }
 }
 
-export function drawAllCategories(
-  session: GenerationSession,
-  categoryIds: string[],
-  rng: () => number,
-  now: () => string = () => new Date().toISOString(),
-): GenerationSession {
-  return categoryIds.reduce(
-    (currentSession, categoryId) =>
-      drawCategoryAssignment(currentSession, categoryId, rng, now),
-    session,
-  )
-}
-
 export function saveTemplateFromSession(
-  session: GenerationSession,
+  session: BuilderSession,
+  recommendedTemplates: RecommendedTemplate[],
   players: PlayerProfile[],
   categories: AttributeCategory[],
   name: string,
   createId: () => string,
   now: () => string = () => new Date().toISOString(),
 ): SavedTemplate {
-  // 模板保存时直接生成摘要，避免模板库和右侧结果区出现不同口径。
-  const categoryById = new Map(categories.map((category) => [category.id, category]))
-  const playerById = new Map(players.map((player) => [player.id, player]))
-  const assignedPlayers = Object.values(session.assignments)
-    .map((assignment) => playerById.get(assignment.playerId))
+  const template = recommendedTemplates.find(
+    (item) => item.id === session.recommendedTemplateId,
+  )
+  const fieldDefinitions = createBuilderFields(categories, session.fieldOrder)
+  const fieldResults = fieldDefinitions
+    .map((field) => buildFieldResult(field, session.fieldAssignments[field.id], players))
+    .filter((result): result is TemplateFieldResult => Boolean(result))
+  const assignedPlayers = fieldResults
+    .map((result) =>
+      players.find((player) => player.name === result.playerName),
+    )
     .filter((player): player is PlayerProfile => Boolean(player))
-
   const overall = assignedPlayers.length
     ? Math.round(
         assignedPlayers.reduce((sum, player) => sum + player.overall, 0) /
           assignedPlayers.length,
       )
     : 0
-
-  const categorySources: TemplateCategorySource[] = Object.entries(session.assignments)
-    .map(([categoryId, assignment]) => {
-      const category = categoryById.get(categoryId)
-      const player = playerById.get(assignment.playerId)
-
-      if (!category || !player) {
-        return null
-      }
-
-      return {
-        categoryId,
-        categoryName: category.name,
-        playerName: player.name,
-      }
-    })
-    .filter((item): item is TemplateCategorySource => Boolean(item))
-
-  const uniqueTags = [...new Set(assignedPlayers.flatMap((player) => player.tags))]
-  const createdAt = session.createdAt
+  const tags = [
+    ...new Set([
+      ...(template?.tags ?? []),
+      ...assignedPlayers.flatMap((player) => player.tags),
+    ]),
+  ]
   const updatedAt = now()
 
   return {
     id: createId(),
     name,
-    presetId: session.presetId,
-    candidateCount: session.candidateCount,
+    recommendedTemplateId: session.recommendedTemplateId,
     candidatePlayerIds: [...session.candidatePlayerIds],
-    assignments: { ...session.assignments },
+    fieldOrder: [...session.fieldOrder],
+    currentFieldIndex: session.currentFieldIndex,
+    fieldAssignments: { ...session.fieldAssignments },
+    coverImage: template?.customCover ?? template?.defaultCover ?? '',
     summary: {
       overall,
-      position: assignedPlayers[0]?.position ?? '未定义',
-      tags: uniqueTags,
-      categorySources,
+      tags,
+      recommendedTemplateName: template?.name ?? '自定义模板',
+      completedFields: fieldResults.length,
+      fieldResults,
     },
-    createdAt,
+    createdAt: session.createdAt,
     updatedAt,
   }
 }
 
-export function openTemplateSession(template: SavedTemplate): GenerationSession {
+export function openTemplateSession(template: SavedTemplate): BuilderSession {
   return {
-    presetId: template.presetId,
+    recommendedTemplateId: template.recommendedTemplateId,
     templateName: template.name,
-    candidateCount: template.candidateCount,
     candidatePlayerIds: [...template.candidatePlayerIds],
-    assignments: { ...template.assignments },
+    fieldOrder: [...template.fieldOrder],
+    currentFieldIndex: template.currentFieldIndex,
+    fieldAssignments: { ...template.fieldAssignments },
     drawLog: [],
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
   }
+}
+
+export function getPlayerValueForField(
+  player: PlayerProfile,
+  fieldId: string,
+): AttributeValue | undefined {
+  const [categoryId, fieldKey] = fieldId.split('.')
+
+  return player.categories[categoryId]?.[fieldKey]
+}
+
+export function findFieldDefinition(
+  categories: AttributeCategory[],
+  fieldId: string,
+): BuilderFieldDefinition | null {
+  const [categoryId, fieldKey] = fieldId.split('.')
+  const category = categories.find((item) => item.id === categoryId)
+  const field = category?.fields.find((item) => item.key === fieldKey)
+
+  if (!category || !field) {
+    return null
+  }
+
+  return {
+    id: fieldId,
+    categoryId,
+    fieldKey,
+    label: field.label,
+  }
+}
+
+function buildFieldResult(
+  field: BuilderFieldDefinition,
+  assignment: FieldAssignment | undefined,
+  players: PlayerProfile[],
+): TemplateFieldResult | null {
+  if (!assignment) {
+    return null
+  }
+
+  const player = players.find((item) => item.id === assignment.playerId)
+
+  if (!player) {
+    return null
+  }
+
+  return {
+    fieldId: field.id,
+    fieldLabel: field.label,
+    value: assignment.value,
+    playerName: player.name,
+    note: String(
+      player.categories.meta?.note ??
+        player.categories.meta?.templateArchetype ??
+        `来自 ${player.name}`,
+    ),
+  }
+}
+
+function findNextFieldIndex(
+  fieldOrder: string[],
+  assignments: Record<string, FieldAssignment>,
+  startIndex: number,
+) {
+  for (let index = startIndex; index < fieldOrder.length; index += 1) {
+    if (!assignments[fieldOrder[index]]) {
+      return index
+    }
+  }
+
+  return Math.max(fieldOrder.length - 1, 0)
 }

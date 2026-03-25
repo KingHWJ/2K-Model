@@ -1,820 +1,489 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { defaultPreset, createDefaultAppState } from './data/defaults'
+import './App.css'
 import { WheelDisplay } from './components/WheelDisplay'
+import { createDefaultAppState } from './data/defaults'
 import {
-  clampCandidateCount,
+  createBuilderFields,
   createSession,
-  drawCandidatePlayerIds,
-  drawCategoryAssignment,
+  drawFieldAssignment,
   openTemplateSession,
   saveTemplateFromSession,
 } from './lib/builderState'
 import { loadAppState, saveAppState } from './lib/storage'
+import { createSpinSequence, getTargetWheelRotation } from './lib/wheel'
 import type {
   AppState,
-  AttributeCategory,
-  AttributeValue,
-  CategoryAssignment,
-  GenerationSession,
+  BuilderFieldDefinition,
+  BuilderSession,
   PlayerProfile,
-  Preset,
+  RecommendedTemplate,
   SavedTemplate,
 } from './types'
-import './App.css'
+
+type PageView = 'home' | 'builder' | 'tags' | 'library'
 
 function App() {
   const [appState, setAppState] = useState<AppState>(() =>
     loadAppState(window.localStorage, createDefaultAppState()),
   )
-  const [candidateRotation, setCandidateRotation] = useState(0)
-  const [categoryRotation, setCategoryRotation] = useState(0)
-  const [candidateSpinLabel, setCandidateSpinLabel] = useState('')
-  const [categorySpinLabel, setCategorySpinLabel] = useState('')
-  const [isCandidateSpinning, setIsCandidateSpinning] = useState(false)
-  const [isCategorySpinning, setIsCategorySpinning] = useState(false)
-  const [selectedPlayerId, setSelectedPlayerId] = useState(appState.players[0]?.id ?? '')
-  const [selectedCategoryId, setSelectedCategoryId] = useState(appState.categories[0]?.id ?? '')
-  const [playerSearchKeyword, setPlayerSearchKeyword] = useState('')
-  const [tagDraft, setTagDraft] = useState('')
+  const [activeView, setActiveView] = useState<PageView>('home')
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
+  const [wheelRotation, setWheelRotation] = useState(0)
+  const [wheelHighlight, setWheelHighlight] = useState('')
+  const [wheelSelectedItem, setWheelSelectedItem] = useState('')
+  const [isWheelSpinning, setIsWheelSpinning] = useState(false)
 
   useEffect(() => {
     saveAppState(window.localStorage, appState)
   }, [appState])
 
-  useEffect(() => {
-    if (!appState.players.some((player) => player.id === selectedPlayerId)) {
-      setSelectedPlayerId(appState.players[0]?.id ?? '')
-    }
-  }, [appState.players, selectedPlayerId])
-
-  useEffect(() => {
-    if (!appState.categories.some((category) => category.id === selectedCategoryId)) {
-      setSelectedCategoryId(appState.categories[0]?.id ?? '')
-    }
-  }, [appState.categories, selectedCategoryId])
-
-  const activePreset = appState.presets.find((preset) => preset.id === appState.session.presetId) ?? appState.presets[0]
-  const availablePlayers = appState.players.filter((player) =>
-    activePreset.availablePlayerIds.includes(player.id),
+  const activeRecommendedTemplate =
+    appState.recommendedTemplates.find(
+      (template) => template.id === appState.session.recommendedTemplateId,
+    ) ?? null
+  const builderFields = useMemo(
+    () => createBuilderFields(appState.categories, appState.session.fieldOrder),
+    [appState.categories, appState.session.fieldOrder],
   )
-  const availableCategories = appState.categories.filter((category) =>
-    activePreset.availableCategoryIds.includes(category.id),
-  )
-  const filteredPlayers = appState.players.filter((player) =>
-    matchesPlayerKeyword(player, playerSearchKeyword),
-  )
-  const selectedPlayer = (
-    filteredPlayers.some((player) => player.id === selectedPlayerId)
-      ? filteredPlayers.find((player) => player.id === selectedPlayerId)
-      : filteredPlayers[0]
-  ) ?? appState.players.find((player) => player.id === selectedPlayerId) ?? appState.players[0]
-  const selectedCategory =
-    appState.categories.find((category) => category.id === selectedCategoryId) ??
-    appState.categories[0]
+  const currentField =
+    builderFields[appState.session.currentFieldIndex] ?? builderFields[0] ?? null
   const candidatePlayers = appState.session.candidatePlayerIds
     .map((playerId) => appState.players.find((player) => player.id === playerId))
     .filter((player): player is PlayerProfile => Boolean(player))
-  const liveSummary = buildLiveSummary(
-    appState.session,
-    appState.players,
-    appState.categories,
+  const resultRows = builderFields.map((field) =>
+    createFieldRow(field, appState.session, appState.players),
   )
 
   return (
-    <div className="app-shell">
-      <header className="hero-banner">
-        <div>
-          <p className="eyebrow">NBA 2K26 / 球员融合实验台</p>
-          <h1>2K26 球员融合模板工作台</h1>
-          <p className="hero-text">
-            从传奇球星里抽候选、按属性大类拼装模板，再把你喜欢的融合结果保存成长期可编辑的配置。
-          </p>
-        </div>
-
-        <div className="hero-stats">
-          <div className="stat-card">
-            <span className="stat-label">当前预设</span>
-            <strong>{activePreset.name}</strong>
-          </div>
-          <div className="stat-card">
-            <span className="stat-label">候选人数</span>
-            <strong>{appState.session.candidateCount}</strong>
-          </div>
-          <div className="stat-card">
-            <span className="stat-label">已存模板</span>
-            <strong>{appState.templates.length}</strong>
-          </div>
-        </div>
+    <div className="app-shell minimal-shell">
+      <header className="topbar">
+        <button
+          type="button"
+          className={activeView === 'home' ? 'nav-button active' : 'nav-button'}
+          onClick={() => setActiveView('home')}
+        >
+          首页
+        </button>
+        <button
+          type="button"
+          className={activeView === 'tags' ? 'nav-button active' : 'nav-button'}
+          onClick={() => setActiveView('tags')}
+        >
+          标签页
+        </button>
+        <button
+          type="button"
+          className={activeView === 'library' ? 'nav-button active' : 'nav-button'}
+          onClick={() => setActiveView('library')}
+        >
+          我的模板
+        </button>
       </header>
 
-      <main className="workbench-grid">
-        <section className="panel stack">
-          <div className="panel-header">
+      {activeView === 'home' ? renderHomeView() : null}
+      {activeView === 'builder' ? renderBuilderView() : null}
+      {activeView === 'tags' ? renderTagsView() : null}
+      {activeView === 'library' ? renderLibraryView() : null}
+    </div>
+  )
+
+  function renderHomeView() {
+    return (
+      <main className="home-view">
+        <section className="hero-card">
+          <p className="eyebrow">NBA 2K26 Template Board</p>
+          <h1>选择一个模板方向</h1>
+          <p className="hero-copy">
+            先从推荐模板里选择风格，再进入单个大转盘页面，按身高、体重、臂展、肩宽和核心能力逐项抽取。
+          </p>
+        </section>
+
+        <section className="recommend-section">
+          <div className="section-title-row">
             <div>
-              <p className="eyebrow">Workbench A</p>
-              <h2>池子配置区</h2>
+              <p className="eyebrow">Recommended</p>
+              <h2>模板推荐</h2>
             </div>
-            <button className="ghost-button" type="button" onClick={handleRestoreDefaults}>
-              恢复默认池
-            </button>
+            <span className="muted">默认封面可直接使用，也支持上传你自己的球星图片。</span>
           </div>
 
-          <div className="subpanel">
-            <label className="field">
-              <span>预设池</span>
-              <select
-                value={activePreset.id}
-                onChange={(event) => handlePresetChange(event.target.value)}
-              >
-                {appState.presets.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>候选人数</span>
-              <input
-                type="number"
-                min={1}
-                max={availablePlayers.length || 1}
-                value={appState.session.candidateCount}
-                onChange={(event) =>
-                  updateSession({
-                    ...appState.session,
-                    candidateCount: clampCandidateCount(
-                      Number(event.target.value),
-                      availablePlayers.length,
-                    ),
-                  })
-                }
-              />
-            </label>
-            <p className="muted">{activePreset.description}</p>
-          </div>
-
-          <div className="subpanel">
-            <div className="subpanel-title-row">
-              <h3>球员池管理</h3>
-              <div className="inline-actions">
-                <label className="field compact-field">
-                  <span>搜索球员</span>
-                  <input
-                    aria-label="搜索球员"
-                    value={playerSearchKeyword}
-                    placeholder="输入 jordan、约基奇、SGA、KD、PG、标签等"
-                    onChange={(event) => setPlayerSearchKeyword(event.target.value)}
-                  />
-                </label>
-                <button type="button" onClick={handleAddPlayer}>
-                  新增球员
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={() => selectedPlayer && handleDeletePlayer(selectedPlayer.id)}
-                  disabled={!selectedPlayer}
-                >
-                  删除当前球员
-                </button>
-              </div>
-            </div>
-
-            <div className="list-selector">
-              {filteredPlayers.map((player) => (
-                <button
-                  key={player.id}
-                  type="button"
-                  className={player.id === selectedPlayer?.id ? 'pill active' : 'pill'}
-                  onClick={() => setSelectedPlayerId(player.id)}
-                >
-                  {player.name}
-                </button>
-              ))}
-            </div>
-            {filteredPlayers.length === 0 ? (
-              <p className="empty-inline">没有匹配到球员，试试英文 id、中文姓名、位置或标签。</p>
-            ) : null}
-
-            {selectedPlayer ? (
-              <div className="editor-grid">
-                <label className="field">
-                  <span>姓名</span>
-                  <input
-                    value={selectedPlayer.name}
-                    onChange={(event) =>
-                      updatePlayer(selectedPlayer.id, 'name', event.target.value)
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>位置</span>
-                  <input
-                    value={selectedPlayer.position}
-                    onChange={(event) =>
-                      updatePlayer(selectedPlayer.id, 'position', event.target.value)
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>总评</span>
-                  <input
-                    type="number"
-                    min={60}
-                    max={99}
-                    value={selectedPlayer.overall}
-                    onChange={(event) =>
-                      updatePlayer(
-                        selectedPlayer.id,
-                        'overall',
-                        Number(event.target.value),
-                      )
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>年代/版本</span>
-                  <input
-                    value={selectedPlayer.era}
-                    onChange={(event) =>
-                      updatePlayer(selectedPlayer.id, 'era', event.target.value)
-                    }
-                  />
-                </label>
-                <label className="field field-span">
-                  <span>风格标签（逗号分隔）</span>
-                  <input
-                    value={selectedPlayer.tags.join(', ')}
-                    onChange={(event) =>
-                      updatePlayer(
-                        selectedPlayer.id,
-                        'tags',
-                        event.target.value
-                          .split(',')
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                  />
-                </label>
-                <label className="field field-span">
-                  <span>搜索别名（逗号分隔）</span>
-                  <input
-                    value={selectedPlayer.aliases.join(', ')}
-                    onChange={(event) =>
-                      updatePlayer(
-                        selectedPlayer.id,
-                        'aliases',
-                        event.target.value
-                          .split(',')
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            {selectedPlayer ? (
-              <div className="category-editor-list">
-                {availableCategories.map((category) => (
-                  <details key={`${selectedPlayer.id}-${category.id}`} className="detail-card">
-                    <summary>
-                      <strong>{category.name}</strong>
-                      <span>{renderCategoryPreview(selectedPlayer, category)}</span>
-                    </summary>
-                    <div className="field-list">
-                      {category.fields.map((field) => (
-                        <label className="field" key={field.key}>
-                          <span>{field.label}</span>
-                          <input
-                            value={String(
-                              selectedPlayer.categories[category.id]?.[field.key] ?? field.defaultValue,
-                            )}
-                            onChange={(event) =>
-                              updatePlayerCategoryValue(
-                                selectedPlayer.id,
-                                category.id,
-                                field.key,
-                                coerceValue(event.target.value, field.defaultValue),
-                              )
-                            }
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </details>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="subpanel">
-            <div className="subpanel-title-row">
-              <h3>属性池管理</h3>
-              <div className="inline-actions">
-                <button type="button" onClick={handleAddCategory}>
-                  新增属性组
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  disabled={!selectedCategory}
-                  onClick={() => selectedCategory && handleDeleteCategory(selectedCategory.id)}
-                >
-                  删除当前属性组
-                </button>
-              </div>
-            </div>
-
-            <div className="list-selector">
-              {appState.categories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={category.id === selectedCategory?.id ? 'pill active' : 'pill'}
-                  onClick={() => setSelectedCategoryId(category.id)}
-                >
-                  {category.name}
-                </button>
-              ))}
-            </div>
-
-            {selectedCategory ? (
-              <>
-                <label className="field">
-                  <span>属性组名称</span>
-                  <input
-                    value={selectedCategory.name}
-                    onChange={(event) =>
-                      updateCategoryName(selectedCategory.id, event.target.value)
-                    }
-                  />
-                </label>
-
-                <div className="field-list">
-                  {selectedCategory.fields.map((field) => (
-                    <div className="field-row" key={field.key}>
-                      <label className="field">
-                        <span>字段名</span>
-                        <input
-                          value={field.label}
-                          onChange={(event) =>
-                            updateCategoryField(
-                              selectedCategory.id,
-                              field.key,
-                              'label',
-                              event.target.value,
-                            )
-                          }
-                        />
-                      </label>
-                      <label className="field">
-                        <span>默认值</span>
-                        <input
-                          value={String(field.defaultValue)}
-                          onChange={(event) =>
-                            updateCategoryField(
-                              selectedCategory.id,
-                              field.key,
-                              'defaultValue',
-                              coerceValue(event.target.value, field.defaultValue),
-                            )
-                          }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => removeCategoryField(selectedCategory.id, field.key)}
-                      >
-                        删除字段
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <button type="button" onClick={() => addCategoryField(selectedCategory.id)}>
-                  新增字段
-                </button>
-              </>
-            ) : null}
-          </div>
-
-          <div className="subpanel">
-            <div className="subpanel-title-row">
-              <h3>标签库管理</h3>
-              <div className="inline-actions">
-                <input
-                  className="inline-input"
-                  value={tagDraft}
-                  placeholder="新增风格标签"
-                  onChange={(event) => setTagDraft(event.target.value)}
+          <div className="template-grid">
+            {appState.recommendedTemplates.map((template) => (
+              <article key={template.id} className="recommended-card">
+                <img
+                  src={template.customCover ?? template.defaultCover}
+                  alt={`${template.name} 模板封面`}
+                  className="cover-image"
                 />
-                <button type="button" onClick={handleAddTag}>
-                  添加
-                </button>
-              </div>
-            </div>
+                <div className="recommended-body">
+                  <div>
+                    <p className="eyebrow">{template.subtitle}</p>
+                    <h3>{template.name}</h3>
+                    <p className="muted">{template.description}</p>
+                  </div>
 
-            <div className="list-selector">
-              {activePreset.tagLibrary.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  className="pill"
-                  onClick={() => handleRemoveTag(tag)}
-                >
-                  {tag} ×
-                </button>
+                  <div className="meta-list">
+                    <div>
+                      <span className="meta-label">代表球员</span>
+                      <strong>{template.featuredPlayers.join(' / ')}</strong>
+                    </div>
+                    <div className="chip-row">
+                      {template.tags.map((tag) => (
+                        <span key={`${template.id}-${tag}`} className="soft-chip">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="card-actions">
+                    <button type="button" onClick={() => handleCreateTemplate(template)}>
+                      基于此模板创建
+                    </button>
+                    <label className="upload-button">
+                      <span>上传模板封面</span>
+                      <input
+                        aria-label="上传模板封面"
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          handleCoverUpload(template.id, event.target.files?.[0] ?? null)
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  function renderBuilderView() {
+    if (!activeRecommendedTemplate || !currentField) {
+      return (
+        <main className="builder-view">
+          <section className="empty-card">
+            <h1>创建模板</h1>
+            <p className="muted">先回到首页选择一个模板方向，再进入单转盘创建页。</p>
+            <button type="button" onClick={() => setActiveView('home')}>
+              返回首页
+            </button>
+          </section>
+        </main>
+      )
+    }
+
+    const currentRow = resultRows.find((row) => row.field.id === currentField.id)
+
+    return (
+      <main className="builder-view">
+        <section className="builder-header-card">
+          <img
+            src={activeRecommendedTemplate.customCover ?? activeRecommendedTemplate.defaultCover}
+            alt={`${activeRecommendedTemplate.name} 模板封面`}
+            className="builder-cover"
+          />
+          <div className="builder-header-copy">
+            <p className="eyebrow">Builder</p>
+            <h1>创建模板</h1>
+            <h2>{activeRecommendedTemplate.name}</h2>
+            <p className="muted">{activeRecommendedTemplate.description}</p>
+            <div className="chip-row">
+              {activeRecommendedTemplate.tags.map((tag) => (
+                <span key={tag} className="soft-chip">
+                  {tag}
+                </span>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="panel stack">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Workbench B</p>
-              <h2>转盘抽选区</h2>
+        <section className="builder-layout">
+          <div className="builder-main-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">当前字段</p>
+                <h3>{currentField.label}</h3>
+              </div>
+              <span className="status-pill">
+                已完成 {Object.keys(appState.session.fieldAssignments).length}/{builderFields.length}
+              </span>
             </div>
-            <div className="inline-actions">
+
+            <div className="field-progress">
+              {builderFields.map((field, index) => (
+                <button
+                  key={field.id}
+                  type="button"
+                  className={index === appState.session.currentFieldIndex ? 'field-chip active' : 'field-chip'}
+                  onClick={() => handleSelectField(index)}
+                >
+                  {field.label}
+                </button>
+              ))}
+            </div>
+
+            <WheelDisplay
+              title="候选球员转盘"
+              subtitle="转盘停到哪位球员，就取当前字段对应的真实值"
+              items={candidatePlayers.map((player) => player.name)}
+              accent="gold"
+              rotation={wheelRotation}
+              isSpinning={isWheelSpinning}
+              highlightText={wheelHighlight || currentRow?.sourceText}
+              selectedItem={wheelSelectedItem || currentRow?.sourceText}
+            />
+
+            <div className="draw-actions">
               <button
                 type="button"
-                onClick={handleDrawCandidates}
-                disabled={isCandidateSpinning || isCategorySpinning}
+                onClick={handleDrawCurrentField}
+                disabled={candidatePlayers.length === 0 || isWheelSpinning}
               >
-                {isCandidateSpinning ? '候选抽选中...' : '抽取候选球员'}
+                {isWheelSpinning ? '抽取中...' : '抽取当前字段'}
               </button>
               <button
                 type="button"
-                className="accent-button"
-                onClick={handleDrawAll}
-                disabled={candidatePlayers.length === 0 || isCandidateSpinning || isCategorySpinning}
+                className="ghost-button"
+                onClick={handleDrawCurrentField}
+                disabled={candidatePlayers.length === 0 || isWheelSpinning}
               >
-                {isCategorySpinning ? '属性融合中...' : '一键全抽'}
+                重抽当前字段
+              </button>
+              <button type="button" className="ghost-button" onClick={() => setActiveView('home')}>
+                返回首页
               </button>
             </div>
+
+            <article className="current-result-card">
+              <p className="eyebrow">即时结果</p>
+              <div className="result-stat-row">
+                <span>字段名称</span>
+                <strong>{currentField.label}</strong>
+              </div>
+              <div className="result-stat-row">
+                <span>最终值</span>
+                <strong>{currentRow?.valueText ?? '等待抽取'}</strong>
+              </div>
+              <div className="result-stat-row">
+                <span>来源球员</span>
+                <strong>{currentRow?.sourceText ?? '等待抽取'}</strong>
+              </div>
+              <div className="result-stat-row">
+                <span>备注</span>
+                <strong>{currentRow?.noteText ?? '等待抽取'}</strong>
+              </div>
+            </article>
           </div>
 
-          <WheelDisplay
-            title="候选球员轮盘"
-            subtitle="从预设球员池中抽取融合候选"
-            items={availablePlayers.map((player) => player.name)}
-            accent="gold"
-            rotation={candidateRotation}
-            isSpinning={isCandidateSpinning}
-            highlightText={
-              candidateSpinLabel || candidatePlayers.map((player) => player.name).join(' / ')
-            }
-          />
-
-          <div className="candidate-bar">
-            {candidatePlayers.length > 0 ? (
-              candidatePlayers.map((player) => (
-                <article key={player.id} className="candidate-card">
-                  <span className="candidate-overall">{player.overall}</span>
-                  <strong>{player.name}</strong>
-                  <span>{player.position}</span>
-                  <small>{player.tags.join(' / ')}</small>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">先抽出候选球员，再开始融合属性。</p>
-            )}
-          </div>
-
-          <WheelDisplay
-            title="属性大类轮盘"
-            subtitle="决定下一步要融合的属性方向"
-            items={availableCategories.map((category) => category.name)}
-            accent="red"
-            rotation={categoryRotation}
-            isSpinning={isCategorySpinning}
-            highlightText={
-              categorySpinLabel || (liveSummary.categorySources.at(-1)?.categoryName
-                ? `${liveSummary.categorySources.at(-1)?.categoryName} / ${liveSummary.categorySources.at(-1)?.playerName}`
-                : undefined)
-            }
-          />
-
-          <div className="draw-list">
-            {availableCategories.map((category) => {
-              const assignment = appState.session.assignments[category.id]
-
-              return (
-                <div key={category.id} className="draw-row">
-                  <div>
-                    <strong>{category.name}</strong>
-                    <p className="muted">
-                      {assignment
-                        ? `当前来源：${findPlayerName(appState.players, assignment.playerId)}`
-                        : '尚未抽取'}
-                    </p>
-                  </div>
-                  <div className="inline-actions">
-                    <select
-                      value={assignment?.playerId ?? ''}
-                      onChange={(event) =>
-                        handleManualAssignment(category.id, event.target.value)
-                      }
-                      disabled={candidatePlayers.length === 0 || isCandidateSpinning || isCategorySpinning}
-                    >
-                      <option value="">手动指定来源</option>
-                      {candidatePlayers.map((player) => (
-                        <option key={`${category.id}-${player.id}`} value={player.id}>
-                          {player.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleDrawCategory(category.id)}
-                      disabled={candidatePlayers.length === 0 || isCandidateSpinning || isCategorySpinning}
-                    >
-                      {isCategorySpinning ? '抽取中...' : `抽取 ${category.name}`}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        <section className="panel stack">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Workbench C</p>
-              <h2>融合结果区</h2>
+          <aside className="builder-side-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">Template Name</p>
+                <h3>保存当前模板</h3>
+              </div>
             </div>
-            <span className="status-chip">
-              已融合 {Object.keys(appState.session.assignments).length}/{availableCategories.length}
-            </span>
-          </div>
-
-          <div className="summary-card">
-            <div>
-              <p className="eyebrow">模板概览</p>
-              <h3>{appState.session.templateName}</h3>
-              <p className="muted">
-                综合总评 {liveSummary.overall} / 位置 {liveSummary.position}
-              </p>
-            </div>
-            <div className="list-selector">
-              {liveSummary.tags.length > 0 ? (
-                liveSummary.tags.map((tag) => (
-                  <span key={tag} className="pill static">
-                    {tag}
-                  </span>
-                ))
-              ) : (
-                <span className="muted">等待属性来源完成后生成标签画像</span>
-              )}
-            </div>
-          </div>
-
-          <div className="subpanel">
             <label className="field">
               <span>模板名称</span>
               <input
                 aria-label="模板名称"
                 value={appState.session.templateName}
-                onChange={(event) =>
-                  updateSession({
-                    ...appState.session,
-                    templateName: event.target.value,
-                  })
-                }
+                onChange={(event) => updateSession({
+                  ...appState.session,
+                  templateName: event.target.value,
+                })}
               />
             </label>
-            <button type="button" className="accent-button" onClick={handleSaveTemplate}>
+            <button
+              type="button"
+              className="accent-button"
+              onClick={handleSaveTemplate}
+              disabled={Object.keys(appState.session.fieldAssignments).length === 0}
+            >
               保存模板
             </button>
-          </div>
 
-          <div className="subpanel">
-            <div className="subpanel-title-row">
-              <h3>来源球员一览</h3>
-              <span className="muted">抽到哪位球星，表格就立即更新。</span>
-            </div>
-            <div className="result-table" role="table">
-              <div className="result-row result-row-head" role="row">
-                <span>属性大类</span>
-                <span>来源球员</span>
-                <span>字段预览</span>
+            <div className="result-table">
+              <div className="result-row result-row-head">
+                <span>字段</span>
+                <span>最终值</span>
+                <span>来源</span>
+                <span>备注</span>
               </div>
-              {availableCategories.map((category) => {
-                const assignment = appState.session.assignments[category.id]
-                const player = assignment
-                  ? appState.players.find((item) => item.id === assignment.playerId)
-                  : undefined
-
-                return (
-                  <div className="result-row" key={category.id} role="row">
-                    <span>{category.name}</span>
-                    <span>{player ? player.name : '未抽取'}</span>
-                    <span>{player ? renderCategoryPreview(player, category) : '等待结果'}</span>
-                  </div>
-                )
-              })}
+              {resultRows.map((row) => (
+                <div className="result-row" key={row.field.id}>
+                  <span>{row.field.label}</span>
+                  <span>{row.valueText}</span>
+                  <span>{row.sourceText}</span>
+                  <span>{row.noteText}</span>
+                </div>
+              ))}
             </div>
-          </div>
+          </aside>
         </section>
       </main>
+    )
+  }
 
-      <section className="template-library panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Workbench D</p>
-            <h2>模板库</h2>
-          </div>
-          <p className="muted">保存后的模板支持继续编辑、复制和删除。</p>
+  function renderTagsView() {
+    return (
+      <main className="simple-page">
+        <section className="section-title-card">
+          <p className="eyebrow">Tag Guide</p>
+          <h1>模板风格标签</h1>
+          <p className="muted">标签页只负责解释模板方向，不打断你的主抽取流程。</p>
+        </section>
+
+        <div className="tag-grid">
+          {appState.tagDefinitions.map((tag) => (
+            <article key={tag.id} className="tag-card">
+              <p className="eyebrow">{tag.featuredPlayers.join(' / ')}</p>
+              <h3>{tag.label}</h3>
+              <p>{tag.description}</p>
+              <div className="chip-row">
+                {tag.focusFields.map((field) => (
+                  <span key={`${tag.id}-${field}`} className="soft-chip">
+                    {field}
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
         </div>
+      </main>
+    )
+  }
+
+  function renderLibraryView() {
+    return (
+      <main className="simple-page">
+        <section className="section-title-card">
+          <p className="eyebrow">Saved Templates</p>
+          <h1>我的模板</h1>
+          <p className="muted">保存后的模板可以继续编辑，也可以直接删除重来。</p>
+        </section>
 
         <div className="template-grid">
           {appState.templates.length > 0 ? (
             appState.templates.map((template) => (
-              <article key={template.id} className="template-card">
-                <div>
-                  <p className="eyebrow">模板档案</p>
-                  <h3>{template.name}</h3>
-                  <p className="muted">
-                    总评 {template.summary.overall} / {template.summary.position}
-                  </p>
-                </div>
-                <div className="list-selector">
-                  {template.summary.tags.map((tag) => (
-                    <span key={`${template.id}-${tag}`} className="pill static">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <div className="inline-actions">
-                  <button type="button" onClick={() => handleOpenTemplate(template)}>
-                    继续编辑
-                  </button>
-                  <button type="button" className="ghost-button" onClick={() => handleDuplicateTemplate(template)}>
-                    复制模板
-                  </button>
-                  <button type="button" className="ghost-button" onClick={() => handleDeleteTemplate(template.id)}>
-                    删除
-                  </button>
+              <article key={template.id} className="saved-template-card">
+                <img src={template.coverImage} alt={`${template.name} 模板封面`} className="cover-image" />
+                <div className="recommended-body">
+                  <div>
+                    <p className="eyebrow">{template.summary.recommendedTemplateName}</p>
+                    <h3>{template.name}</h3>
+                    <p className="muted">
+                      已完成 {template.summary.completedFields} 项 / 综合总评 {template.summary.overall}
+                    </p>
+                  </div>
+                  <div className="chip-row">
+                    {template.summary.tags.map((tag) => (
+                      <span key={`${template.id}-${tag}`} className="soft-chip">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="card-actions">
+                    <button type="button" onClick={() => handleOpenTemplate(template)}>
+                      继续编辑
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => handleDeleteTemplate(template.id)}
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
               </article>
             ))
           ) : (
-            <div className="empty-state template-empty">
-              还没有保存模板。完成一次融合后，点击“保存模板”即可归档到这里。
-            </div>
+            <section className="empty-card">
+              <h2>还没有保存模板</h2>
+              <p className="muted">先从首页选择推荐模板，再到创建页抽出你的第一版结果。</p>
+            </section>
           )}
         </div>
-      </section>
-    </div>
-  )
+      </main>
+    )
+  }
 
-  function updateSession(nextSession: GenerationSession) {
+  function updateSession(nextSession: BuilderSession) {
     setAppState((currentState) => ({
       ...currentState,
       session: {
         ...nextSession,
-        candidateCount: clampCandidateCount(
-          nextSession.candidateCount,
-          availablePlayers.length,
-        ),
         updatedAt: new Date().toISOString(),
       },
     }))
   }
 
-  function handlePresetChange(presetId: string) {
-    const preset = appState.presets.find((item) => item.id === presetId) ?? defaultPreset
-    const nextSession = createSession(preset, appState.categories)
+  function handleCreateTemplate(template: RecommendedTemplate) {
+    setActiveTemplateId(null)
+    setWheelRotation(0)
+    setWheelHighlight('')
+    setWheelSelectedItem('')
+    setAppState((currentState) => ({
+      ...currentState,
+      session: createSession(template, template.featuredFieldIds),
+    }))
+    setActiveView('builder')
+  }
+
+  async function handleDrawCurrentField() {
+    if (!currentField || candidatePlayers.length === 0 || isWheelSpinning) {
+      return
+    }
+
+    const selectedIndex = Math.floor(Math.random() * candidatePlayers.length)
+    const selectedPlayer = candidatePlayers[selectedIndex]
+    const nextRotation = getTargetWheelRotation(
+      candidatePlayers.length,
+      selectedIndex,
+      wheelRotation,
+      6,
+    )
+    const spinSequence = createSpinSequence(
+      candidatePlayers.map((player) => player.name),
+      selectedIndex,
+      3,
+    )
+
+    setIsWheelSpinning(true)
+    setWheelRotation(nextRotation)
+
+    for (const [index, label] of spinSequence.entries()) {
+      setWheelSelectedItem(label)
+      setWheelHighlight(`${currentField.label} / ${label}`)
+      await sleep(54 + index * 12)
+    }
+
+    const nextSession = drawFieldAssignment(
+      appState.session,
+      currentField.id,
+      appState.players,
+      createIndexRng(selectedIndex, candidatePlayers.length),
+    )
+    const assignment = nextSession.fieldAssignments[currentField.id]
+    const player = appState.players.find((item) => item.id === assignment?.playerId)
 
     setAppState((currentState) => ({
       ...currentState,
       session: nextSession,
     }))
-    setActiveTemplateId(null)
-  }
-
-  function handleDrawCandidates() {
-    if (isCandidateSpinning || isCategorySpinning) {
-      return
-    }
-
-    void runCandidateSpin()
-  }
-
-  async function runCandidateSpin() {
-    const nextCandidateIds = drawCandidatePlayerIds(
-      availablePlayers.map((player) => player.id),
-      appState.session.candidateCount,
-      Math.random,
+    setWheelHighlight(
+      player
+        ? `${currentField.label} / ${player.name} / ${String(assignment.value)}`
+        : currentField.label,
     )
-    const finalNames = nextCandidateIds.map((playerId) =>
-      findPlayerName(appState.players, playerId),
-    )
-    const now = new Date().toISOString()
-    const candidateLogs = nextCandidateIds.map((playerId) => ({
-      type: 'candidate' as const,
-      targetId: 'candidate-pool',
-      playerId,
-      createdAt: now,
-    }))
-
-    setIsCandidateSpinning(true)
-    setCandidateRotation((value) => value + 360 + Math.random() * 240)
-    for (const label of createSpinFrames(finalNames, availablePlayers.map((player) => player.name))) {
-      setCandidateSpinLabel(label)
-      await sleep(140)
-    }
-
-    updateSession({
-      ...appState.session,
-      candidatePlayerIds: nextCandidateIds,
-      assignments: {},
-      drawLog: [...appState.session.drawLog, ...candidateLogs],
-      updatedAt: now,
-    })
-    setCandidateSpinLabel(finalNames.join(' / '))
-    await sleep(160)
-    setIsCandidateSpinning(false)
-  }
-
-  function handleDrawCategory(categoryId: string) {
-    if (isCandidateSpinning || isCategorySpinning) {
-      return
-    }
-
-    void runSingleCategorySpin(categoryId)
-  }
-
-  async function runSingleCategorySpin(categoryId: string) {
-    setIsCategorySpinning(true)
-    setCategoryRotation((value) => value + 360 + Math.random() * 180)
-    const category = availableCategories.find((item) => item.id === categoryId)
-    for (const label of createSpinFrames(
-      candidatePlayers.map((player) => player.name),
-      candidatePlayers.map((player) => player.name),
-    )) {
-      setCategorySpinLabel(`${category?.name ?? '属性组'} / ${label}`)
-      await sleep(120)
-    }
-
-    const nextSession = drawCategoryAssignment(appState.session, categoryId, Math.random)
-    updateSession(nextSession)
-    setCategorySpinLabel(
-      `${category?.name ?? '属性组'} / ${findPlayerName(
-        appState.players,
-        nextSession.assignments[categoryId].playerId,
-      )}`,
-    )
-    await sleep(160)
-    setIsCategorySpinning(false)
-  }
-
-  function handleDrawAll() {
-    if (isCandidateSpinning || isCategorySpinning) {
-      return
-    }
-
-    void runAllCategorySpin()
-  }
-
-  async function runAllCategorySpin() {
-    setIsCategorySpinning(true)
-    setCategoryRotation((value) => value + 540 + Math.random() * 180)
-    let nextSession = appState.session
-
-    for (const category of availableCategories) {
-      for (const label of createSpinFrames(
-        candidatePlayers.map((player) => player.name),
-        candidatePlayers.map((player) => player.name),
-      )) {
-        setCategorySpinLabel(`${category.name} / ${label}`)
-        await sleep(110)
-      }
-
-      nextSession = drawCategoryAssignment(nextSession, category.id, Math.random)
-      updateSession(nextSession)
-    }
-
-    const finalCategory = availableCategories.at(-1)
-    if (finalCategory && nextSession.assignments[finalCategory.id]) {
-      setCategorySpinLabel(
-        `${finalCategory.name} / ${findPlayerName(
-          appState.players,
-          nextSession.assignments[finalCategory.id].playerId,
-        )}`,
-      )
-    }
-
+    setWheelSelectedItem(player?.name ?? selectedPlayer?.name ?? '')
     await sleep(180)
-    setIsCategorySpinning(false)
+    setIsWheelSpinning(false)
   }
 
   function handleSaveTemplate() {
@@ -824,6 +493,7 @@ function App() {
         ...appState.session,
         templateName: normalizedName,
       },
+      appState.recommendedTemplates,
       appState.players,
       appState.categories,
       normalizedName,
@@ -846,30 +516,22 @@ function App() {
         },
       }
     })
-
     setActiveTemplateId(nextTemplate.id)
+    setActiveView('library')
   }
 
   function handleOpenTemplate(template: SavedTemplate) {
+    const nextSession = openTemplateSession(template)
+
     setActiveTemplateId(template.id)
+    setWheelRotation(0)
+    setWheelHighlight('')
+    setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
     setAppState((currentState) => ({
       ...currentState,
-      session: openTemplateSession(template),
+      session: nextSession,
     }))
-  }
-
-  function handleDuplicateTemplate(template: SavedTemplate) {
-    const duplicatedTemplate: SavedTemplate = {
-      ...template,
-      id: createId('template'),
-      name: `${template.name} 副本`,
-      updatedAt: new Date().toISOString(),
-    }
-
-    setAppState((currentState) => ({
-      ...currentState,
-      templates: [duplicatedTemplate, ...currentState.templates],
-    }))
+    setActiveView('builder')
   }
 
   function handleDeleteTemplate(templateId: string) {
@@ -883,348 +545,67 @@ function App() {
     }
   }
 
-  function handleManualAssignment(categoryId: string, playerId: string) {
-    if (!playerId) {
-      return
-    }
-
-    const assignment: CategoryAssignment = {
-      playerId,
-      createdAt: new Date().toISOString(),
-    }
-
-    updateSession({
+  function handleSelectField(index: number) {
+    const nextSession = {
       ...appState.session,
-      assignments: {
-        ...appState.session.assignments,
-        [categoryId]: assignment,
-      },
-    })
-  }
-
-  function handleRestoreDefaults() {
-    setAppState(createDefaultAppState())
-    setActiveTemplateId(null)
-    setTagDraft('')
-  }
-
-  function handleAddPlayer() {
-    const nextPlayerId = createId('player')
-    const fallbackCategories = Object.fromEntries(
-      appState.categories.map((category) => [
-        category.id,
-        Object.fromEntries(
-          category.fields.map((field) => [field.key, field.defaultValue]),
-        ),
-      ]),
-    )
-    const nextPlayer: PlayerProfile = {
-      id: nextPlayerId,
-      name: '新球员',
-      position: 'SG',
-      overall: 85,
-      era: '自定义',
-      tags: [],
-      aliases: [],
-      categories: fallbackCategories,
+      currentFieldIndex: index,
     }
 
-    setAppState((currentState) => normalizeState({
-      ...currentState,
-      players: [nextPlayer, ...currentState.players],
-    }))
-    setSelectedPlayerId(nextPlayerId)
+    setWheelSelectedItem(resolveAssignedPlayerName(nextSession, appState.players) ?? '')
+    setWheelHighlight('')
+    updateSession(nextSession)
   }
 
-  function handleDeletePlayer(playerId: string) {
-    setAppState((currentState) =>
-      normalizeState({
-        ...currentState,
-        players: currentState.players.filter((player) => player.id !== playerId),
-      }),
-    )
-  }
-
-  function updatePlayer<K extends keyof Omit<PlayerProfile, 'categories' | 'id'>>(
-    playerId: string,
-    key: K,
-    value: PlayerProfile[K],
-  ) {
-    setAppState((currentState) => ({
-      ...currentState,
-      players: currentState.players.map((player) =>
-        player.id === playerId ? { ...player, [key]: value } : player,
-      ),
-    }))
-  }
-
-  function updatePlayerCategoryValue(
-    playerId: string,
-    categoryId: string,
-    fieldKey: string,
-    value: AttributeValue,
-  ) {
-    setAppState((currentState) => ({
-      ...currentState,
-      players: currentState.players.map((player) =>
-        player.id === playerId
-          ? {
-              ...player,
-              categories: {
-                ...player.categories,
-                [categoryId]: {
-                  ...player.categories[categoryId],
-                  [fieldKey]: value,
-                },
-              },
-            }
-          : player,
-      ),
-    }))
-  }
-
-  function handleAddCategory() {
-    const categoryId = createId('category')
-    const nextCategory: AttributeCategory = {
-      id: categoryId,
-      name: '新属性组',
-      fields: [{ key: 'field_1', label: '字段1', defaultValue: 80 }],
-    }
-
-    setAppState((currentState) =>
-      normalizeState({
-        ...currentState,
-        categories: [...currentState.categories, nextCategory],
-        players: currentState.players.map((player) => ({
-          ...player,
-          categories: {
-            ...player.categories,
-            [categoryId]: { field_1: 80 },
-          },
-        })),
-      }),
-    )
-    setSelectedCategoryId(categoryId)
-  }
-
-  function handleDeleteCategory(categoryId: string) {
-    setAppState((currentState) =>
-      normalizeState({
-        ...currentState,
-        categories: currentState.categories.filter((category) => category.id !== categoryId),
-        players: currentState.players.map((player) => {
-          const nextCategories = { ...player.categories }
-          delete nextCategories[categoryId]
-
-          return {
-            ...player,
-            categories: nextCategories,
-          }
-        }),
-      }),
-    )
-  }
-
-  function updateCategoryName(categoryId: string, name: string) {
-    setAppState((currentState) => ({
-      ...currentState,
-      categories: currentState.categories.map((category) =>
-        category.id === categoryId ? { ...category, name } : category,
-      ),
-    }))
-  }
-
-  function updateCategoryField(
-    categoryId: string,
-    fieldKey: string,
-    key: 'label' | 'defaultValue',
-    value: AttributeValue,
-  ) {
-    setAppState((currentState) => ({
-      ...currentState,
-      categories: currentState.categories.map((category) =>
-        category.id === categoryId
-          ? {
-              ...category,
-              fields: category.fields.map((field) =>
-                field.key === fieldKey ? { ...field, [key]: value } : field,
-              ),
-            }
-          : category,
-      ),
-    }))
-  }
-
-  function addCategoryField(categoryId: string) {
-    const fieldKey = createId('field')
-
-    setAppState((currentState) => ({
-      ...currentState,
-      categories: currentState.categories.map((category) =>
-        category.id === categoryId
-          ? {
-              ...category,
-              fields: [
-                ...category.fields,
-                {
-                  key: fieldKey,
-                  label: `字段${category.fields.length + 1}`,
-                  defaultValue: 75,
-                },
-              ],
-            }
-          : category,
-      ),
-      players: currentState.players.map((player) =>
-        player.categories[categoryId]
-          ? {
-              ...player,
-              categories: {
-                ...player.categories,
-                [categoryId]: {
-                  ...player.categories[categoryId],
-                  [fieldKey]: 75,
-                },
-              },
-            }
-          : player,
-      ),
-    }))
-  }
-
-  function removeCategoryField(categoryId: string, fieldKey: string) {
-    setAppState((currentState) => ({
-      ...currentState,
-      categories: currentState.categories.map((category) =>
-        category.id === categoryId
-          ? {
-              ...category,
-              fields: category.fields.filter((field) => field.key !== fieldKey),
-            }
-          : category,
-      ),
-      players: currentState.players.map((player) => {
-        const nextCategoryValues = { ...player.categories[categoryId] }
-        delete nextCategoryValues[fieldKey]
-
-        return {
-          ...player,
-          categories: {
-            ...player.categories,
-            [categoryId]: nextCategoryValues,
-          },
-        }
-      }),
-    }))
-  }
-
-  function handleAddTag() {
-    const nextTag = tagDraft.trim()
-
-    if (!nextTag) {
+  function handleCoverUpload(templateId: string, file: File | null) {
+    if (!file) {
       return
     }
 
-    setAppState((currentState) => ({
-      ...currentState,
-      presets: currentState.presets.map((preset) =>
-        preset.id === activePreset.id
-          ? {
-              ...preset,
-              tagLibrary: [...new Set([...preset.tagLibrary, nextTag])],
-            }
-          : preset,
-      ),
-    }))
-    setTagDraft('')
-  }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : null
 
-  function handleRemoveTag(tag: string) {
-    setAppState((currentState) => ({
-      ...currentState,
-      presets: currentState.presets.map((preset) =>
-        preset.id === activePreset.id
-          ? {
-              ...preset,
-              tagLibrary: preset.tagLibrary.filter((item) => item !== tag),
-            }
-          : preset,
-      ),
-    }))
+      if (!result) {
+        return
+      }
+
+      setAppState((currentState) => ({
+        ...currentState,
+        recommendedTemplates: currentState.recommendedTemplates.map((template) =>
+          template.id === templateId
+            ? { ...template, customCover: result }
+            : template,
+        ),
+      }))
+    }
+    reader.readAsDataURL(file)
   }
 }
 
 export default App
 
-function buildLiveSummary(
-  session: GenerationSession,
+function createFieldRow(
+  field: BuilderFieldDefinition,
+  session: BuilderSession,
   players: PlayerProfile[],
-  categories: AttributeCategory[],
 ) {
-  // 复用模板摘要逻辑，确保预览和最终保存看到的是同一套结果。
-  return saveTemplateFromSession(
-    session,
-    players,
-    categories,
-    session.templateName,
-    () => 'preview',
-    () => session.updatedAt,
-  ).summary
-}
+  const assignment = session.fieldAssignments[field.id]
+  const player = assignment
+    ? players.find((item) => item.id === assignment.playerId)
+    : undefined
 
-function renderCategoryPreview(player: PlayerProfile, category: AttributeCategory) {
-  return category.fields
-    .slice(0, 3)
-    .map((field) => `${field.label}:${player.categories[category.id]?.[field.key] ?? '-'}`)
-    .join(' / ')
-}
-
-function createId(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-function findPlayerName(players: PlayerProfile[], playerId: string) {
-  return players.find((player) => player.id === playerId)?.name ?? '未知球员'
-}
-
-function coerceValue(input: string, sample: AttributeValue): AttributeValue {
-  if (typeof sample === 'number') {
-    const nextNumber = Number(input)
-
-    return Number.isNaN(nextNumber) ? sample : nextNumber
+  return {
+    field,
+    valueText: assignment ? String(assignment.value) : '等待抽取',
+    sourceText: player ? player.name : '等待抽取',
+    noteText: player
+      ? String(
+          player.categories.meta?.note ??
+            player.categories.meta?.templateArchetype ??
+            `来自 ${player.name}`,
+        )
+      : '等待抽取',
   }
-
-  return input
-}
-
-function matchesPlayerKeyword(player: PlayerProfile, keyword: string) {
-  const normalizedKeyword = keyword.trim().toLowerCase()
-
-  if (!normalizedKeyword) {
-    return true
-  }
-
-  const templateArchetype = String(player.categories.meta?.templateArchetype ?? '')
-  const haystack = [
-    player.id,
-    player.name,
-    player.position,
-    player.era,
-    templateArchetype,
-    ...player.tags,
-    ...player.aliases,
-  ]
-    .join(' ')
-    .toLowerCase()
-
-  return haystack.includes(normalizedKeyword)
-}
-
-function createSpinFrames(finalLabels: string[], fallbackLabels: string[]) {
-  const fallback = fallbackLabels.slice(0, Math.max(4, Math.min(6, fallbackLabels.length)))
-  const frames = [...fallback, ...finalLabels]
-
-  return frames.length > 0 ? frames : ['等待抽取']
 }
 
 function sleep(duration: number) {
@@ -1233,37 +614,26 @@ function sleep(duration: number) {
   })
 }
 
-function normalizeState(state: AppState): AppState {
-  // 当用户编辑球员池或属性池时，顺手把预设引用和当前会话清洗到可用状态。
-  const playerIds = state.players.map((player) => player.id)
-  const categoryIds = state.categories.map((category) => category.id)
-  const nextPresets: Preset[] = state.presets.map((preset) => ({
-    ...preset,
-    availablePlayerIds: playerIds,
-    availableCategoryIds: categoryIds,
-  }))
-  const activePreset = nextPresets.find((preset) => preset.id === state.session.presetId) ?? nextPresets[0]
-  const filteredAssignments = Object.fromEntries(
-    Object.entries(state.session.assignments).filter(
-      ([categoryId, assignment]) =>
-        categoryIds.includes(categoryId) && playerIds.includes(assignment.playerId),
-    ),
-  )
+function createId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
+}
 
-  return {
-    ...state,
-    presets: nextPresets,
-    session: {
-      ...state.session,
-      presetId: activePreset.id,
-      candidateCount: clampCandidateCount(
-        state.session.candidateCount,
-        playerIds.length,
-      ),
-      candidatePlayerIds: state.session.candidatePlayerIds.filter((playerId) =>
-        playerIds.includes(playerId),
-      ),
-      assignments: filteredAssignments,
-    },
+function createIndexRng(index: number, itemCount: number) {
+  return () => {
+    if (itemCount <= 1) {
+      return 0
+    }
+
+    return Math.min((index + 0.001) / itemCount, 0.999999)
   }
+}
+
+function resolveAssignedPlayerName(
+  session: BuilderSession,
+  players: PlayerProfile[],
+) {
+  const fieldId = session.fieldOrder[session.currentFieldIndex]
+  const assignment = fieldId ? session.fieldAssignments[fieldId] : undefined
+
+  return players.find((player) => player.id === assignment?.playerId)?.name
 }
