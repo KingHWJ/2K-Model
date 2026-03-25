@@ -167,6 +167,33 @@ describe('storage', () => {
     expect(restored.numberSession.activeFieldId).toBe('body.height')
   })
 
+  it('会保留用户自定义的数值默认值和范围', () => {
+    const storage = createMemoryStorage()
+    const fallback = createDefaultAppState()
+    const customizedState: AppState = {
+      ...fallback,
+      numberFields: fallback.numberFields.map((field) =>
+        field.id === 'body.height'
+          ? {
+              ...field,
+              min: 175,
+              max: 230,
+              defaultValue: 200,
+            }
+          : field,
+      ),
+    }
+
+    saveAppState(storage, customizedState)
+
+    const restored = loadAppState(storage, fallback)
+    const heightField = restored.numberFields.find((field) => field.id === 'body.height')
+
+    expect(heightField?.min).toBe(175)
+    expect(heightField?.max).toBe(230)
+    expect(heightField?.defaultValue).toBe(200)
+  })
+
   it('遇到损坏数据时会安全回退到默认状态', () => {
     const storage = createMemoryStorage()
     storage.setItem(STORAGE_KEY, '{broken-json')

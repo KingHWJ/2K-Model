@@ -169,6 +169,18 @@ button:disabled {
   gap: 18px;
 }
 
+.side-panel-section {
+  display: grid;
+  gap: 14px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.side-panel-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
 .wheel-card {
   display: grid;
   gap: 18px;
@@ -360,6 +372,13 @@ button:disabled {
 .card-actions,
 .field-progress,
 .draw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inline-action-group,
+.candidate-chip-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -565,7 +584,9 @@ button:disabled {
   gap: 12px;
 }
 
-.field input {
+.field input,
+.field textarea,
+.field select {
   width: 100%;
   min-height: 44px;
   box-sizing: border-box;
@@ -574,6 +595,56 @@ button:disabled {
   background: #ffffff;
   color: #172033;
   padding: 10px 14px;
+}
+
+.field textarea {
+  min-height: 120px;
+  resize: vertical;
+  font: inherit;
+}
+
+.field select {
+  appearance: none;
+}
+
+.number-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.number-config-span {
+  grid-column: 1 / -1;
+}
+
+.player-search-list {
+  display: grid;
+  gap: 10px;
+}
+
+.player-search-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: rgba(23, 32, 51, 0.04);
+}
+
+.removable-chip {
+  box-shadow: none;
+}
+
+.success-note {
+  color: #0f766e;
+}
+
+.back-to-top-button {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 40;
 }
 
 .result-row {
@@ -651,5 +722,9 @@ button:disabled {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .number-config-grid {
+    grid-template-columns: 1fr;
   }
 }
