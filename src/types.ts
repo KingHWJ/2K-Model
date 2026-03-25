@@ -54,16 +54,18 @@ export interface TagDefinition {
 export interface NumberDrawField {
   id: string
   label: string
-  min: number
-  max: number
-  defaultValue: number
-  unit: string
+  kind: 'range' | 'options'
+  min?: number
+  max?: number
+  options?: string[]
+  defaultValue: AttributeValue
+  unit?: string
   note: string
 }
 
 export interface NumberDrawResult {
   fieldId: string
-  value: number
+  value: AttributeValue
   createdAt: string
 }
 

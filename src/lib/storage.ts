@@ -122,7 +122,9 @@ function normalizeNumberFields(
   fields: NumberDrawField[] | undefined,
   fallback: NumberDrawField[],
 ) {
-  return Array.isArray(fields) && fields.length > 0 ? fields : fallback
+  void fields
+  // 数值直抽字段当前以内置默认集为准，避免旧版字段结构残留到新界面里。
+  return fallback
 }
 
 function normalizeNumberSession(
@@ -132,6 +134,7 @@ function normalizeNumberSession(
   fallback: NumberDrawSession,
 ): NumberDrawSession {
   const normalizedFields = normalizeNumberFields(fields, fallbackFields)
+  const validFieldIds = new Set(normalizedFields.map((field) => field.id))
 
   if (!session) {
     return {
@@ -143,10 +146,16 @@ function normalizeNumberSession(
   return {
     ...session,
     activeFieldId:
-      typeof session.activeFieldId === 'string' && session.activeFieldId.length > 0
+      typeof session.activeFieldId === 'string' &&
+      session.activeFieldId.length > 0 &&
+      validFieldIds.has(session.activeFieldId)
         ? session.activeFieldId
         : normalizedFields[0]?.id ?? fallback.activeFieldId,
     results:
-      session.results && typeof session.results === 'object' ? session.results : fallback.results,
+      session.results && typeof session.results === 'object'
+        ? Object.fromEntries(
+            Object.entries(session.results).filter(([fieldId]) => validFieldIds.has(fieldId)),
+          )
+        : fallback.results,
   }
 }

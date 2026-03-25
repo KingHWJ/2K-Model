@@ -538,6 +538,20 @@ button:disabled {
   border-bottom: 1px solid rgba(23, 32, 51, 0.08);
 }
 
+.result-value-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  width: fit-content;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(217, 119, 6, 0.12);
+  color: #9a3412;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.14);
+}
+
 .result-row:last-child {
   border-bottom: 0;
 }

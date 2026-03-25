@@ -129,6 +129,44 @@ describe('storage', () => {
     expect(restored.numberSession.activeFieldId).toBe('body.height')
   })
 
+  it('会用最新的数值字段定义替换旧版体型指数字段', () => {
+    const storage = createMemoryStorage()
+    const fallback = createDefaultAppState()
+    const legacyLikeState = {
+      ...fallback,
+      numberFields: [
+        {
+          id: 'body.frameIndex',
+          label: '体型指数',
+          min: 1,
+          max: 10,
+          defaultValue: 5,
+          unit: '',
+          note: '旧版字段',
+        },
+      ],
+      numberSession: {
+        ...fallback.numberSession,
+        activeFieldId: 'body.frameIndex',
+        results: {
+          'body.frameIndex': {
+            fieldId: 'body.frameIndex',
+            value: 5,
+            createdAt: '2026-03-25T11:00:00.000Z',
+          },
+        },
+      },
+    }
+
+    storage.setItem(STORAGE_KEY, JSON.stringify(legacyLikeState))
+
+    const restored = loadAppState(storage, fallback)
+
+    expect(restored.numberFields.some((field) => field.id === 'body.frameIndex')).toBe(false)
+    expect(restored.numberFields.some((field) => field.id === 'body.shoulderBuild')).toBe(true)
+    expect(restored.numberSession.activeFieldId).toBe('body.height')
+  })
+
   it('遇到损坏数据时会安全回退到默认状态', () => {
     const storage = createMemoryStorage()
     storage.setItem(STORAGE_KEY, '{broken-json')

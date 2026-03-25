@@ -13,6 +13,7 @@ import {
 import { loadAppState, saveAppState } from './lib/storage'
 import { createSpinSequence, getTargetWheelRotation } from './lib/wheel'
 import type {
+  AttributeValue,
   AppState,
   BuilderFieldDefinition,
   BuilderSession,
@@ -353,7 +354,7 @@ function App() {
               {resultRows.map((row) => (
                 <div className="result-row" key={row.field.id}>
                   <span>{row.field.label}</span>
-                  <span>{row.valueText}</span>
+                  <span className="result-value-cell">{row.valueText}</span>
                   <span>{row.sourceText}</span>
                   <span>{row.noteText}</span>
                 </div>
@@ -422,10 +423,7 @@ function App() {
                   onClick={() => handleSelectNumberField(field.id)}
                 >
                   <strong>{field.label}</strong>
-                  <span>
-                    {field.min} - {field.max}
-                    {field.unit ? ` ${field.unit}` : ''}
-                  </span>
+                  <span>{formatNumberRange(field)}</span>
                 </button>
               ))}
             </div>
@@ -442,14 +440,18 @@ function App() {
             <div className="number-draw-stage">
               <WheelDisplay
                 title="数字转盘"
-                subtitle="每个数字都是一格，指针会停在某一个明确数值上"
-                items={numberWheelItems.map(String)}
+                subtitle={
+                  activeNumberField?.kind === 'options'
+                    ? '每一格都是一个体型选项，指针会停在某一个明确结果上'
+                    : '每个数字都是一格，指针会停在某一个明确数值上'
+                }
+                items={numberWheelItems.map(formatWheelItem)}
                 accent="red"
                 rotation={numberWheelRotation}
                 isSpinning={isNumberWheelSpinning}
                 highlightText={numberWheelHighlight || formatNumberRange(activeNumberField)}
                 selectedItem={numberWheelSelectedItem}
-                variant="numbers"
+                variant={activeNumberField?.kind === 'options' ? 'players' : 'numbers'}
                 size="large"
               />
 
@@ -514,7 +516,7 @@ function App() {
                 <div className="result-row" key={row.id}>
                   <span>{row.label}</span>
                   <span>{row.defaultValueText}</span>
-                  <span>{row.resultValueText}</span>
+                  <span className="result-value-cell">{row.resultValueText}</span>
                   <span>{row.rangeText}</span>
                   <span>{row.noteText}</span>
                 </div>
@@ -720,7 +722,7 @@ function App() {
     setNumberWheelRotation(0)
     setNumberWheelHighlight(field ? formatNumberRange(field) : '')
     setNumberWheelSelectedItem(
-      field && result ? String(result.value) : '',
+      field && result ? formatWheelItem(result.value) : '',
     )
     setAppState((currentState) => ({
       ...currentState,
@@ -740,7 +742,7 @@ function App() {
     const values = createNumberWheelItems(activeNumberField)
     const selectedIndex = Math.floor(Math.random() * values.length)
     const value = values[selectedIndex]
-    const spinSequence = createCompactSpinSequence(values.map(String), selectedIndex, 8)
+    const spinSequence = createCompactSpinSequence(values.map(formatWheelItem), selectedIndex, 8)
     const nextRotation = getTargetWheelRotation(
       values.length,
       selectedIndex,
@@ -748,6 +750,7 @@ function App() {
       4,
     )
     const createdAt = new Date().toISOString()
+    const nextField = getNextNumberField(appState.numberFields, activeNumberField.id)
 
     setIsNumberWheelSpinning(true)
     setNumberWheelRotation(nextRotation)
@@ -763,6 +766,7 @@ function App() {
       ...currentState,
       numberSession: {
         ...currentState.numberSession,
+        activeFieldId: nextField?.id ?? currentState.numberSession.activeFieldId,
         results: {
           ...currentState.numberSession.results,
           [activeNumberField.id]: {
@@ -774,11 +778,18 @@ function App() {
         updatedAt: createdAt,
       },
     }))
-    setNumberWheelSelectedItem(String(value))
+    setNumberWheelSelectedItem(formatWheelItem(value))
     setNumberWheelHighlight(
       `${activeNumberField.label} / ${formatNumberValue(activeNumberField, value)}`,
     )
+
     await sleep(120)
+    if (nextField) {
+      const nextResult = appState.numberSession.results[nextField.id]
+      setNumberWheelRotation(0)
+      setNumberWheelHighlight(formatNumberRange(nextField))
+      setNumberWheelSelectedItem(nextResult ? formatWheelItem(nextResult.value) : '')
+    }
     setIsNumberWheelSpinning(false)
   }
 
@@ -892,10 +903,14 @@ function resolveAssignedPlayerName(
 }
 
 function createNumberWheelItems(field: NumberDrawField) {
-  return Array.from(
-    { length: field.max - field.min + 1 },
-    (_, index) => field.min + index,
-  )
+  if (field.kind === 'options') {
+    return field.options ?? []
+  }
+
+  const min = field.min ?? 0
+  const max = field.max ?? min
+
+  return Array.from({ length: max - min + 1 }, (_, index) => min + index)
 }
 
 function formatNumberRange(field: NumberDrawField | null) {
@@ -903,15 +918,23 @@ function formatNumberRange(field: NumberDrawField | null) {
     return '等待字段'
   }
 
+  if (field.kind === 'options') {
+    return (field.options ?? []).join(' / ')
+  }
+
   return `${field.min} - ${field.max}${field.unit ? ` ${field.unit}` : ''}`
 }
 
-function formatNumberValue(field: NumberDrawField, value: number) {
-  if (field.id === 'body.frameIndex') {
-    return `${value} / ${resolveFrameLabel(value)}`
+function formatNumberValue(field: NumberDrawField, value: AttributeValue) {
+  if (field.kind === 'options') {
+    return String(value)
   }
 
   return `${value}${field.unit ? ` ${field.unit}` : ''}`
+}
+
+function formatWheelItem(value: AttributeValue) {
+  return String(value)
 }
 
 function createCompactSpinSequence(
@@ -930,14 +953,12 @@ function createCompactSpinSequence(
   })
 }
 
-function resolveFrameLabel(value: number) {
-  if (value <= 3) {
-    return '瘦长'
+function getNextNumberField(fields: NumberDrawField[], currentFieldId: string) {
+  const currentIndex = fields.findIndex((field) => field.id === currentFieldId)
+
+  if (currentIndex === -1 || currentIndex >= fields.length - 1) {
+    return null
   }
 
-  if (value <= 7) {
-    return '标准'
-  }
-
-  return '宽肩'
+  return fields[currentIndex + 1]
 }

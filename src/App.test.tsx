@@ -74,12 +74,14 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { name: '数值直抽' })).toBeInTheDocument()
     expect(screen.getAllByText('身高').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('肩宽/体型').length).toBeGreaterThan(0)
+    expect(screen.queryByText('体型指数')).not.toBeInTheDocument()
     expect(screen.getAllByText('170 - 224 cm').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: '开始抽取' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '抽取当前字段' })).toBeInTheDocument()
   }, 10000)
 
-  it('数值直抽会在字段范围内抽出最终数字并写入结果表', async () => {
+  it('数值直抽会在字段范围内抽出最终数字并写入结果表并自动跳到下一项', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()
     render(<App />)
@@ -88,7 +90,9 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '开始抽取' }))
 
     expect((await screen.findAllByText('170 cm', {}, { timeout: 5000 })).length).toBeGreaterThan(0)
+    expect(await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getAllByText('贴近 2K Builder 的身高范围').length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('.number-result-table .result-value-cell').length).toBeGreaterThan(0)
   }, 10000)
 
   it('保存模板后会在我的模板里显示结果', async () => {
