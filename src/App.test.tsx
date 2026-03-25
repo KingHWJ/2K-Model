@@ -65,6 +65,19 @@ describe('App', () => {
     expect(screen.getByText('双向分卫')).toBeInTheDocument()
   })
 
+  it('可以进入数值直抽标签页并看到字段列表', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '数值直抽' }))
+
+    expect(screen.getByRole('heading', { name: '数值直抽' })).toBeInTheDocument()
+    expect(screen.getAllByText('身高').length).toBeGreaterThan(0)
+    expect(screen.getByText('170 - 224 cm')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始抽取' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '抽取当前字段' })).toBeInTheDocument()
+  })
+
   it('保存模板后会在我的模板里显示结果', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()

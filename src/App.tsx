@@ -16,12 +16,13 @@ import type {
   AppState,
   BuilderFieldDefinition,
   BuilderSession,
+  NumberDrawField,
   PlayerProfile,
   RecommendedTemplate,
   SavedTemplate,
 } from './types'
 
-type PageView = 'home' | 'builder' | 'tags' | 'library'
+type PageView = 'home' | 'builder' | 'number-draw' | 'tags' | 'library'
 
 function App() {
   const [appState, setAppState] = useState<AppState>(() =>
@@ -48,6 +49,10 @@ function App() {
   )
   const currentField =
     builderFields[appState.session.currentFieldIndex] ?? builderFields[0] ?? null
+  const activeNumberField =
+    appState.numberFields.find((field) => field.id === appState.numberSession.activeFieldId) ??
+    appState.numberFields[0] ??
+    null
   const candidatePlayers = appState.session.candidatePlayerIds
     .map((playerId) => appState.players.find((player) => player.id === playerId))
     .filter((player): player is PlayerProfile => Boolean(player))
@@ -67,6 +72,20 @@ function App() {
         </button>
         <button
           type="button"
+          className={activeView === 'builder' ? 'nav-button active' : 'nav-button'}
+          onClick={() => setActiveView('builder')}
+        >
+          模板创建
+        </button>
+        <button
+          type="button"
+          className={activeView === 'number-draw' ? 'nav-button active' : 'nav-button'}
+          onClick={() => setActiveView('number-draw')}
+        >
+          数值直抽
+        </button>
+        <button
+          type="button"
           className={activeView === 'tags' ? 'nav-button active' : 'nav-button'}
           onClick={() => setActiveView('tags')}
         >
@@ -83,6 +102,7 @@ function App() {
 
       {activeView === 'home' ? renderHomeView() : null}
       {activeView === 'builder' ? renderBuilderView() : null}
+      {activeView === 'number-draw' ? renderNumberDrawView() : null}
       {activeView === 'tags' ? renderTagsView() : null}
       {activeView === 'library' ? renderLibraryView() : null}
     </div>
@@ -358,6 +378,76 @@ function App() {
     )
   }
 
+  function renderNumberDrawView() {
+    return (
+      <main className="builder-view">
+        <section className="section-title-card">
+          <p className="eyebrow">Number Draw</p>
+          <h1>数值直抽</h1>
+          <p className="muted">不基于推荐模板，直接通过数字转盘决定字段的最终值。</p>
+        </section>
+
+        <section className="number-draw-layout">
+          <aside className="builder-side-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">字段列表</p>
+                <h3>默认数值范围</h3>
+              </div>
+            </div>
+            <div className="number-field-list">
+              {appState.numberFields.map((field) => (
+                <button
+                  key={field.id}
+                  type="button"
+                  className={
+                    field.id === activeNumberField?.id ? 'number-field-card active' : 'number-field-card'
+                  }
+                  onClick={() => handleSelectNumberField(field.id)}
+                >
+                  <strong>{field.label}</strong>
+                  <span>
+                    {field.min} - {field.max}
+                    {field.unit ? ` ${field.unit}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <section className="builder-main-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">当前字段</p>
+                <h3>{activeNumberField?.label ?? '等待字段'}</h3>
+              </div>
+            </div>
+
+            <div className="number-draw-stage">
+              <section className="empty-card">
+                <h3>数字转盘即将接入</h3>
+                <p className="muted">
+                  当前范围：
+                  {activeNumberField
+                    ? ` ${activeNumberField.min} - ${activeNumberField.max}${activeNumberField.unit ? ` ${activeNumberField.unit}` : ''}`
+                    : ' 等待字段'}
+                </p>
+              </section>
+
+              <div className="number-draw-side-actions">
+                <button type="button">抽取当前字段</button>
+              </div>
+            </div>
+
+            <div className="draw-actions">
+              <button type="button">开始抽取</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    )
+  }
+
   function renderLibraryView() {
     return (
       <main className="simple-page">
@@ -543,6 +633,17 @@ function App() {
     if (activeTemplateId === templateId) {
       setActiveTemplateId(null)
     }
+  }
+
+  function handleSelectNumberField(fieldId: string) {
+    setAppState((currentState) => ({
+      ...currentState,
+      numberSession: {
+        ...currentState.numberSession,
+        activeFieldId: fieldId,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
   }
 
   function handleSelectField(index: number) {
