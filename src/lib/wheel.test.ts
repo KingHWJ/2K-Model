@@ -8,10 +8,10 @@ describe('wheel helpers', () => {
     expect(normalizeRotation(-90)).toBe(270)
   })
 
-  it('会让选中的扇区停在指针位置', () => {
+  it('会让选中的扇区中心停在顶部向下指针位置', () => {
     const nextRotation = getTargetWheelRotation(4, 1, 0, 4)
 
-    expect(normalizeRotation(nextRotation)).toBe(270)
+    expect(normalizeRotation(nextRotation)).toBe(225)
   })
 
   it('会生成以目标球员结束的高亮序列', () => {

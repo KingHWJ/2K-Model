@@ -28,6 +28,7 @@ export function WheelDisplay({
 }: WheelDisplayProps) {
   const safeItems = items.length > 0 ? items : ['等待数据']
   const gradient = createConicGradient(safeItems.length, paletteMap[accent])
+  const step = 360 / safeItems.length
 
   return (
     <article className="wheel-card">
@@ -55,7 +56,7 @@ export function WheelDisplay({
               className="wheel-label-anchor"
               style={
                 {
-                  '--item-angle': `${(360 / safeItems.length) * index}deg`,
+                  '--item-angle': `${step * index + step / 2}deg`,
                 } as CSSProperties
               }
             >

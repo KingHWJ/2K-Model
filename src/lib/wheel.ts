@@ -14,7 +14,7 @@ export function getTargetWheelRotation(
 
   const step = 360 / itemCount
   const normalizedCurrent = normalizeRotation(currentRotation)
-  const targetRotation = normalizeRotation(-selectedIndex * step)
+  const targetRotation = normalizeRotation(-(selectedIndex * step + step / 2))
   let delta = targetRotation - normalizedCurrent
 
   if (delta < 0) {
