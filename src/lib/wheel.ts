@@ -14,6 +14,7 @@ export function getTargetWheelRotation(
 
   const step = 360 / itemCount
   const normalizedCurrent = normalizeRotation(currentRotation)
+  // 让顶部向下的固定指针对齐到目标扇区的中心，而不是扇区边界。
   const targetRotation = normalizeRotation(-(selectedIndex * step + step / 2))
   let delta = targetRotation - normalizedCurrent
 

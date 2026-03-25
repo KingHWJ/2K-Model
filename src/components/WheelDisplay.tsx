@@ -9,6 +9,8 @@ interface WheelDisplayProps {
   isSpinning?: boolean
   highlightText?: string
   selectedItem?: string
+  variant?: 'players' | 'numbers'
+  size?: 'default' | 'large'
 }
 
 const paletteMap = {
@@ -25,10 +27,26 @@ export function WheelDisplay({
   isSpinning = false,
   highlightText,
   selectedItem,
+  variant = 'players',
+  size = 'default',
 }: WheelDisplayProps) {
   const safeItems = items.length > 0 ? items : ['等待数据']
   const gradient = createConicGradient(safeItems.length, paletteMap[accent])
   const step = 360 / safeItems.length
+  const sceneClassName = [
+    'wheel-scene',
+    isSpinning ? 'spinning' : '',
+    size === 'large' ? 'large' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const discClassName = [
+    'wheel-disc',
+    isSpinning ? 'spinning' : '',
+    variant === 'numbers' ? 'numbers' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <article className="wheel-card">
@@ -40,12 +58,13 @@ export function WheelDisplay({
         </p>
       </div>
 
-      <div className={isSpinning ? 'wheel-scene spinning' : 'wheel-scene'}>
+      <div className={sceneClassName}>
         <div className="wheel-pointer" aria-hidden="true" />
         <div
-          className={isSpinning ? 'wheel-disc spinning' : 'wheel-disc'}
+          className={discClassName}
           style={{
             '--wheel-rotation': `${rotation}deg`,
+            '--segment-step': `${step}deg`,
             backgroundImage: gradient,
             transform: `rotate(${rotation}deg)`,
           } as CSSProperties}
@@ -53,7 +72,7 @@ export function WheelDisplay({
           {safeItems.map((item, index) => (
             <span
               key={`${item}-${index}`}
-              className="wheel-label-anchor"
+              className={variant === 'numbers' ? 'wheel-label-anchor numbers' : 'wheel-label-anchor'}
               style={
                 {
                   '--item-angle': `${step * index + step / 2}deg`,
@@ -61,7 +80,16 @@ export function WheelDisplay({
               }
             >
               <span
-                className={item === selectedItem ? 'wheel-label active' : 'wheel-label'}
+                className={
+                  [
+                    'wheel-label',
+                    item === selectedItem ? 'active' : '',
+                    variant === 'numbers' ? 'numeric' : '',
+                    safeItems.length > 40 ? 'dense' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                }
               >
                 {item}
               </span>

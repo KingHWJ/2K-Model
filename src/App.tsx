@@ -34,6 +34,10 @@ function App() {
   const [wheelHighlight, setWheelHighlight] = useState('')
   const [wheelSelectedItem, setWheelSelectedItem] = useState('')
   const [isWheelSpinning, setIsWheelSpinning] = useState(false)
+  const [numberWheelRotation, setNumberWheelRotation] = useState(0)
+  const [numberWheelHighlight, setNumberWheelHighlight] = useState('')
+  const [numberWheelSelectedItem, setNumberWheelSelectedItem] = useState('')
+  const [isNumberWheelSpinning, setIsNumberWheelSpinning] = useState(false)
 
   useEffect(() => {
     saveAppState(window.localStorage, appState)
@@ -53,6 +57,13 @@ function App() {
     appState.numberFields.find((field) => field.id === appState.numberSession.activeFieldId) ??
     appState.numberFields[0] ??
     null
+  const numberWheelItems = activeNumberField ? createNumberWheelItems(activeNumberField) : []
+  const activeNumberResult = activeNumberField
+    ? appState.numberSession.results[activeNumberField.id]
+    : undefined
+  const numberResultRows = appState.numberFields.map((field) =>
+    createNumberResultRow(field, appState.numberSession),
+  )
   const candidatePlayers = appState.session.candidatePlayerIds
     .map((playerId) => appState.players.find((player) => player.id === playerId))
     .filter((player): player is PlayerProfile => Boolean(player))
@@ -247,36 +258,28 @@ function App() {
               ))}
             </div>
 
-            <WheelDisplay
-              title="候选球员转盘"
-              subtitle="转盘停到哪位球员，就取当前字段对应的真实值"
-              items={candidatePlayers.map((player) => player.name)}
-              accent="gold"
-              rotation={wheelRotation}
-              isSpinning={isWheelSpinning}
-              highlightText={wheelHighlight || currentRow?.sourceText}
-              selectedItem={wheelSelectedItem || currentRow?.sourceText}
-            />
+            <div className="builder-wheel-stage">
+              <WheelDisplay
+                title="候选球员转盘"
+                subtitle="每一块只代表一位球员，指针停到谁就继承当前字段的真实值"
+                items={candidatePlayers.map((player) => player.name)}
+                accent="gold"
+                rotation={wheelRotation}
+                isSpinning={isWheelSpinning}
+                highlightText={wheelHighlight || currentRow?.sourceText}
+                selectedItem={wheelSelectedItem || currentRow?.sourceText}
+                size="large"
+              />
 
-            <div className="draw-actions">
-              <button
-                type="button"
-                onClick={handleDrawCurrentField}
-                disabled={candidatePlayers.length === 0 || isWheelSpinning}
-              >
-                {isWheelSpinning ? '抽取中...' : '抽取当前字段'}
-              </button>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={handleDrawCurrentField}
-                disabled={candidatePlayers.length === 0 || isWheelSpinning}
-              >
-                重抽当前字段
-              </button>
-              <button type="button" className="ghost-button" onClick={() => setActiveView('home')}>
-                返回首页
-              </button>
+              <div className="builder-wheel-side-actions">
+                <button
+                  type="button"
+                  onClick={handleDrawCurrentField}
+                  disabled={candidatePlayers.length === 0 || isWheelSpinning}
+                >
+                  {isWheelSpinning ? '抽取中...' : '抽取当前字段'}
+                </button>
+              </div>
             </div>
 
             <article className="current-result-card">
@@ -298,6 +301,19 @@ function App() {
                 <strong>{currentRow?.noteText ?? '等待抽取'}</strong>
               </div>
             </article>
+
+            <div className="draw-actions">
+              <button
+                type="button"
+                onClick={handleDrawCurrentField}
+                disabled={candidatePlayers.length === 0 || isWheelSpinning}
+              >
+                {isWheelSpinning ? '抽取中...' : '开始抽取'}
+              </button>
+              <button type="button" className="ghost-button" onClick={() => setActiveView('home')}>
+                返回首页
+              </button>
+            </div>
           </div>
 
           <aside className="builder-side-card">
@@ -424,23 +440,85 @@ function App() {
             </div>
 
             <div className="number-draw-stage">
-              <section className="empty-card">
-                <h3>数字转盘即将接入</h3>
-                <p className="muted">
-                  当前范围：
-                  {activeNumberField
-                    ? ` ${activeNumberField.min} - ${activeNumberField.max}${activeNumberField.unit ? ` ${activeNumberField.unit}` : ''}`
-                    : ' 等待字段'}
-                </p>
-              </section>
+              <WheelDisplay
+                title="数字转盘"
+                subtitle="每个数字都是一格，指针会停在某一个明确数值上"
+                items={numberWheelItems.map(String)}
+                accent="red"
+                rotation={numberWheelRotation}
+                isSpinning={isNumberWheelSpinning}
+                highlightText={numberWheelHighlight || formatNumberRange(activeNumberField)}
+                selectedItem={numberWheelSelectedItem}
+                variant="numbers"
+                size="large"
+              />
 
               <div className="number-draw-side-actions">
-                <button type="button">抽取当前字段</button>
+                <button
+                  type="button"
+                  onClick={handleDrawNumberField}
+                  disabled={!activeNumberField || isNumberWheelSpinning}
+                >
+                  {isNumberWheelSpinning ? '抽取中...' : '抽取当前字段'}
+                </button>
               </div>
             </div>
 
+            <article className="current-result-card">
+              <p className="eyebrow">即时结果</p>
+              <div className="result-stat-row">
+                <span>字段名称</span>
+                <strong>{activeNumberField?.label ?? '等待字段'}</strong>
+              </div>
+              <div className="result-stat-row">
+                <span>默认值</span>
+                <strong>
+                  {activeNumberField
+                    ? formatNumberValue(activeNumberField, activeNumberField.defaultValue)
+                    : '等待字段'}
+                </strong>
+              </div>
+              <div className="result-stat-row">
+                <span>最终值</span>
+                <strong>
+                  {activeNumberField && activeNumberResult
+                    ? formatNumberValue(activeNumberField, activeNumberResult.value)
+                    : '等待抽取'}
+                </strong>
+              </div>
+              <div className="result-stat-row">
+                <span>备注</span>
+                <strong>{activeNumberField?.note ?? '等待字段'}</strong>
+              </div>
+            </article>
+
             <div className="draw-actions">
-              <button type="button">开始抽取</button>
+              <button
+                type="button"
+                onClick={handleDrawNumberField}
+                disabled={!activeNumberField || isNumberWheelSpinning}
+              >
+                {isNumberWheelSpinning ? '抽取中...' : '开始抽取'}
+              </button>
+            </div>
+
+            <div className="result-table number-result-table">
+              <div className="result-row result-row-head">
+                <span>字段</span>
+                <span>默认值</span>
+                <span>最终值</span>
+                <span>范围</span>
+                <span>备注</span>
+              </div>
+              {numberResultRows.map((row) => (
+                <div className="result-row" key={row.id}>
+                  <span>{row.label}</span>
+                  <span>{row.defaultValueText}</span>
+                  <span>{row.resultValueText}</span>
+                  <span>{row.rangeText}</span>
+                  <span>{row.noteText}</span>
+                </div>
+              ))}
             </div>
           </section>
         </section>
@@ -636,6 +714,14 @@ function App() {
   }
 
   function handleSelectNumberField(fieldId: string) {
+    const field = appState.numberFields.find((item) => item.id === fieldId)
+    const result = field ? appState.numberSession.results[field.id] : undefined
+
+    setNumberWheelRotation(0)
+    setNumberWheelHighlight(field ? formatNumberRange(field) : '')
+    setNumberWheelSelectedItem(
+      field && result ? String(result.value) : '',
+    )
     setAppState((currentState) => ({
       ...currentState,
       numberSession: {
@@ -644,6 +730,56 @@ function App() {
         updatedAt: new Date().toISOString(),
       },
     }))
+  }
+
+  async function handleDrawNumberField() {
+    if (!activeNumberField || isNumberWheelSpinning) {
+      return
+    }
+
+    const values = createNumberWheelItems(activeNumberField)
+    const selectedIndex = Math.floor(Math.random() * values.length)
+    const value = values[selectedIndex]
+    const spinSequence = createCompactSpinSequence(values.map(String), selectedIndex, 8)
+    const nextRotation = getTargetWheelRotation(
+      values.length,
+      selectedIndex,
+      numberWheelRotation,
+      4,
+    )
+    const createdAt = new Date().toISOString()
+
+    setIsNumberWheelSpinning(true)
+    setNumberWheelRotation(nextRotation)
+
+    for (const [index, label] of spinSequence.entries()) {
+      setNumberWheelSelectedItem(label)
+      setNumberWheelHighlight(`${activeNumberField.label} / ${label}`)
+      await sleep(24 + index * 18)
+    }
+
+    // 数值直抽结果单独写入 numberSession，避免和模板创建会话互相覆盖。
+    setAppState((currentState) => ({
+      ...currentState,
+      numberSession: {
+        ...currentState.numberSession,
+        results: {
+          ...currentState.numberSession.results,
+          [activeNumberField.id]: {
+            fieldId: activeNumberField.id,
+            value,
+            createdAt,
+          },
+        },
+        updatedAt: createdAt,
+      },
+    }))
+    setNumberWheelSelectedItem(String(value))
+    setNumberWheelHighlight(
+      `${activeNumberField.label} / ${formatNumberValue(activeNumberField, value)}`,
+    )
+    await sleep(120)
+    setIsNumberWheelSpinning(false)
   }
 
   function handleSelectField(index: number) {
@@ -709,6 +845,22 @@ function createFieldRow(
   }
 }
 
+function createNumberResultRow(
+  field: NumberDrawField,
+  session: AppState['numberSession'],
+) {
+  const result = session.results[field.id]
+
+  return {
+    id: field.id,
+    label: field.label,
+    defaultValueText: formatNumberValue(field, field.defaultValue),
+    resultValueText: result ? formatNumberValue(field, result.value) : '等待抽取',
+    rangeText: formatNumberRange(field),
+    noteText: field.note,
+  }
+}
+
 function sleep(duration: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, duration)
@@ -737,4 +889,55 @@ function resolveAssignedPlayerName(
   const assignment = fieldId ? session.fieldAssignments[fieldId] : undefined
 
   return players.find((player) => player.id === assignment?.playerId)?.name
+}
+
+function createNumberWheelItems(field: NumberDrawField) {
+  return Array.from(
+    { length: field.max - field.min + 1 },
+    (_, index) => field.min + index,
+  )
+}
+
+function formatNumberRange(field: NumberDrawField | null) {
+  if (!field) {
+    return '等待字段'
+  }
+
+  return `${field.min} - ${field.max}${field.unit ? ` ${field.unit}` : ''}`
+}
+
+function formatNumberValue(field: NumberDrawField, value: number) {
+  if (field.id === 'body.frameIndex') {
+    return `${value} / ${resolveFrameLabel(value)}`
+  }
+
+  return `${value}${field.unit ? ` ${field.unit}` : ''}`
+}
+
+function createCompactSpinSequence(
+  items: string[],
+  selectedIndex: number,
+  leadSize: number,
+) {
+  if (items.length <= leadSize) {
+    return items
+  }
+
+  return Array.from({ length: leadSize }, (_, offset) => {
+    const index = selectedIndex - leadSize + 1 + offset
+
+    return items[(index + items.length) % items.length]
+  })
+}
+
+function resolveFrameLabel(value: number) {
+  if (value <= 3) {
+    return '瘦长'
+  }
+
+  if (value <= 7) {
+    return '标准'
+  }
+
+  return '宽肩'
 }
