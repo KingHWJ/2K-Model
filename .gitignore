@@ -1,8 +1,11 @@
 .DS_Store
 node_modules/
 dist/
+dist-ssr/
 coverage/
 .vite/
 .superpowers/
 .worktrees/
+.idea/
+*.local
 *.log

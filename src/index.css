@@ -1,0 +1,88 @@
+:root {
+  font-family:
+    'DIN Alternate',
+    'Arial Narrow',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #f4f6fb;
+  background:
+    radial-gradient(circle at top, rgba(198, 40, 40, 0.28), transparent 25%),
+    radial-gradient(circle at bottom right, rgba(245, 197, 24, 0.18), transparent 28%),
+    linear-gradient(180deg, #06080d, #0f1219 38%, #090b10);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --text-main: #f4f6fb;
+  --text-soft: #9ea5b5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.02), transparent 40%),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 90px,
+      rgba(255, 255, 255, 0.012) 90px 91px
+    );
+  opacity: 0.9;
+}
+
+#root {
+  width: min(1480px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 40px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(36px, 5vw, 58px);
+  line-height: 1.02;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-size: 24px;
+}
+
+h3 {
+  font-size: 18px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
