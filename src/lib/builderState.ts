@@ -46,6 +46,7 @@ export function drawCandidatePlayerIds(
   const pickedIds = new Set<string>()
   let safety = playerIds.length * 10
 
+  // 模拟“转盘连续命中”的体验：允许随机数重复，但最终候选人不能重复。
   while (result.length < targetCount && safety > 0) {
     const index = Math.floor(rng() * playerIds.length)
     const pickedPlayerId = playerIds[index]
@@ -132,6 +133,7 @@ export function saveTemplateFromSession(
   createId: () => string,
   now: () => string = () => new Date().toISOString(),
 ): SavedTemplate {
+  // 模板保存时直接生成摘要，避免模板库和右侧结果区出现不同口径。
   const categoryById = new Map(categories.map((category) => [category.id, category]))
   const playerById = new Map(players.map((player) => [player.id, player]))
   const assignedPlayers = Object.values(session.assignments)
