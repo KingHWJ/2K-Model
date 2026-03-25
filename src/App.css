@@ -24,7 +24,7 @@ button {
   min-height: 42px;
   border-radius: 999px;
   border: 0;
-  padding: 0 18px;
+  padding: 0 16px;
   font-weight: 700;
   cursor: pointer;
   transition:
@@ -371,17 +371,23 @@ button:disabled {
 .chip-row,
 .card-actions,
 .field-progress,
-.draw-actions {
+.draw-actions,
+.compact-action-row {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
 .inline-action-group,
-.candidate-chip-list {
+.candidate-chip-list,
+.compact-action-column {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.compact-action-column {
+  flex-direction: column;
 }
 
 .soft-chip,
@@ -440,6 +446,7 @@ button:disabled {
   gap: 24px;
 }
 
+.settings-layout,
 .number-draw-layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
@@ -448,7 +455,7 @@ button:disabled {
 
 .builder-wheel-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
+  grid-template-columns: minmax(0, 1fr) 160px;
   gap: 16px;
   align-items: center;
 }
@@ -487,7 +494,7 @@ button:disabled {
 
 .number-draw-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
+  grid-template-columns: minmax(0, 1fr) 160px;
   gap: 16px;
   align-items: center;
 }
@@ -513,6 +520,25 @@ button:disabled {
   border: 1px solid rgba(23, 32, 51, 0.06);
   display: grid;
   gap: 12px;
+}
+
+.settings-main-card {
+  gap: 20px;
+}
+
+.settings-section-card {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #fbfcfe, #f7f9fc);
+  border: 1px solid rgba(23, 32, 51, 0.08);
+}
+
+.settings-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .result-modal-backdrop {
@@ -617,6 +643,11 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.compact-button {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
 .player-search-list {
   display: grid;
   gap: 10px;
@@ -693,8 +724,13 @@ button:disabled {
   .builder-layout,
   .builder-header-card,
   .builder-wheel-stage,
+  .settings-layout,
   .number-draw-layout,
   .number-draw-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-stat-grid {
     grid-template-columns: 1fr;
   }
 }

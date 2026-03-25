@@ -1,11 +1,13 @@
 import type {
   AppState,
+  BuildSettings,
   BuilderSession,
   NumberDrawField,
   NumberDrawSession,
   PlayerProfile,
   RecommendedTemplate,
 } from '../types'
+import { applyPositionPresetToFields, getPositionPreset } from './positionPresets'
 
 export const STORAGE_KEY = '2k26-fusion-builder:v2'
 
@@ -46,6 +48,8 @@ function isValidAppState(value: unknown): value is AppState {
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.recommendedTemplates) &&
     Array.isArray(candidate.tagDefinitions) &&
+    (candidate.settings === undefined ||
+      (typeof candidate.settings === 'object' && candidate.settings !== null)) &&
     (candidate.numberFields === undefined || Array.isArray(candidate.numberFields)) &&
     (candidate.numberSession === undefined ||
       (typeof candidate.numberSession === 'object' && candidate.numberSession !== null)) &&
@@ -56,6 +60,13 @@ function isValidAppState(value: unknown): value is AppState {
 }
 
 function normalizeAppState(state: AppState, fallback: AppState): AppState {
+  const normalizedSettings = normalizeSettings(state.settings, fallback.settings)
+  const presetFallbackFields = applyPositionPresetToFields(
+    structuredClone(fallback.numberFields),
+    normalizedSettings.positionPresetId,
+  )
+  const normalizedNumberFields = normalizeNumberFields(state.numberFields, presetFallbackFields)
+
   return {
     ...state,
     players: state.players.map(normalizePlayerProfile),
@@ -63,14 +74,33 @@ function normalizeAppState(state: AppState, fallback: AppState): AppState {
       fallback.recommendedTemplates,
       state.recommendedTemplates,
     ),
-    numberFields: normalizeNumberFields(state.numberFields, fallback.numberFields),
+    settings: normalizedSettings,
+    numberFields: normalizedNumberFields,
     numberSession: normalizeNumberSession(
       state.numberSession,
-      state.numberFields,
-      fallback.numberFields,
+      normalizedNumberFields,
+      presetFallbackFields,
       fallback.numberSession,
     ),
     session: normalizeSession(state.session, fallback.session),
+  }
+}
+
+function normalizeSettings(
+  settings: BuildSettings | undefined,
+  fallback: BuildSettings,
+): BuildSettings {
+  if (!settings) {
+    return fallback
+  }
+
+  const presetId =
+    typeof settings.positionPresetId === 'string' && settings.positionPresetId.length > 0
+      ? getPositionPreset(settings.positionPresetId).id
+      : fallback.positionPresetId
+
+  return {
+    positionPresetId: presetId,
   }
 }
 

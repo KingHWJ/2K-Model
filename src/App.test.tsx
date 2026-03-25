@@ -22,6 +22,7 @@ describe('App', () => {
       screen.getByRole('heading', { name: '选择一个模板方向' }),
     ).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '基于此模板创建' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '标签页' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '我的模板' })).toBeInTheDocument()
   }, 10000)
@@ -38,7 +39,7 @@ describe('App', () => {
     expect(screen.getByText('当前字段')).toBeInTheDocument()
   }, 10000)
 
-  it('模板创建会先弹出结果窗，关闭后才进入下一字段', async () => {
+  it('模板创建会先弹出结果窗，手动关闭后才进入下一字段', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()
     render(<App />)
@@ -55,6 +56,8 @@ describe('App', () => {
     expect(within(resultTable as HTMLElement).getByText('迈克尔·乔丹')).toBeInTheDocument()
     expect(within(resultModal).getByText('来源球员')).toBeInTheDocument()
     expect(within(resultModal).getByText('迈克尔·乔丹')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '身高' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '下一项' }))
     expect(await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })).toBeInTheDocument()
   }, 12000)
 
@@ -83,11 +86,11 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '抽取当前字段' })).toBeInTheDocument()
   }, 10000)
 
-  it('数值直抽可以修改当前字段的默认值和范围', async () => {
+  it('设置页可以修改当前字段的默认值和范围', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '数值直抽' }))
+    await user.click(screen.getByRole('button', { name: '设置' }))
 
     fireEvent.change(screen.getByLabelText('最小值'), { target: { value: '175' } })
     fireEvent.change(screen.getByLabelText('最大值'), { target: { value: '230' } })
@@ -97,31 +100,46 @@ describe('App', () => {
     expect(screen.getAllByText('200 cm').length).toBeGreaterThan(0)
   }, 12000)
 
-  it('数值直抽可以清空结果并恢复当前字段默认值', async () => {
+  it('设置页会根据位置预设更新身高体重和臂展范围', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    await user.selectOptions(screen.getByLabelText('当前位置预设'), 'C')
+
+    expect(screen.getAllByText('208 - 224 cm').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('104 - 159 kg').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('218 - 244 cm').length).toBeGreaterThan(0)
+  }, 12000)
+
+  it('设置页可以清空结果并恢复当前字段默认值', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '数值直抽' }))
+    await user.click(screen.getByRole('button', { name: '设置' }))
     fireEvent.change(screen.getByLabelText('最小值'), { target: { value: '175' } })
-    fireEvent.change(screen.getByLabelText('最大值'), { target: { value: '230' } })
-    fireEvent.change(screen.getByLabelText('默认值'), { target: { value: '200' } })
+    fireEvent.change(screen.getByLabelText('最大值'), { target: { value: '159' } })
+    fireEvent.change(screen.getByLabelText('默认值'), { target: { value: '120' } })
 
     await user.click(screen.getByRole('button', { name: '恢复当前' }))
     expect(screen.getAllByText('170 - 224 cm').length).toBeGreaterThan(0)
     expect(screen.getAllByText('198 cm').length).toBeGreaterThan(0)
 
+    await user.click(screen.getByRole('button', { name: '数值直抽' }))
     await user.click(screen.getByRole('button', { name: '开始抽取' }))
     await screen.findByRole('dialog', { name: '抽取结果' }, { timeout: 5000 })
+    await user.click(screen.getByRole('button', { name: '下一项' }))
     await screen.findAllByRole('heading', { name: '体重' }, { timeout: 5000 })
 
     expect(document.querySelectorAll('.number-result-table .result-value-cell').length).toBeGreaterThan(0)
 
+    await user.click(screen.getByRole('button', { name: '设置' }))
     await user.click(screen.getByRole('button', { name: '清空全部结果' }))
     expect(screen.getAllByText('等待抽取').length).toBeGreaterThan(0)
   }, 15000)
 
-  it('数值直抽会先弹出结果窗，关闭后才进入下一字段', async () => {
+  it('数值直抽会先弹出结果窗，手动关闭后才进入下一字段', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     const user = userEvent.setup()
     render(<App />)
@@ -134,6 +152,8 @@ describe('App', () => {
     expect(screen.getAllByText('贴近 2K Builder 的身高范围').length).toBeGreaterThan(0)
     expect(within(resultModal).getByText('范围')).toBeInTheDocument()
     expect(document.querySelectorAll('.number-result-table .result-value-cell').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: '身高' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '下一项' }))
     expect((await screen.findAllByRole('heading', { name: '体重' }, { timeout: 5000 })).length).toBeGreaterThan(0)
   }, 12000)
 
@@ -156,11 +176,11 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getAllByRole('button', { name: '基于此模板创建' })[0])
+    await user.click(screen.getByRole('button', { name: '设置' }))
 
-    await user.type(
-      screen.getByLabelText('粘贴 2KRatings 文本'),
-      `Kevin Durant
+    fireEvent.change(screen.getByLabelText('粘贴 2KRatings 文本'), {
+      target: {
+        value: `Kevin Durant
 Position PF / SF
 Archetype 3-Level-Scoring Point Forward
 Height 6'11"
@@ -185,10 +205,13 @@ Steal 74
 Block 86
 Offensive Rebound 65
 Defensive Rebound 79`,
-    )
+      },
+    })
     await user.click(screen.getByRole('button', { name: '导入 2KRatings 球员' }))
 
     expect(await screen.findByText('已导入：凯文·杜兰特')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '首页' }))
+    await user.click(screen.getAllByRole('button', { name: '基于此模板创建' })[0])
     await user.clear(screen.getByLabelText('搜索球员'))
     await user.type(screen.getByLabelText('搜索球员'), '杜兰特')
     expect(screen.getByRole('button', { name: '加入候选球员 凯文·杜兰特' })).toBeInTheDocument()
@@ -202,6 +225,7 @@ Defensive Rebound 79`,
     await user.click(screen.getAllByRole('button', { name: '基于此模板创建' })[0])
     await user.click(screen.getByRole('button', { name: '抽取当前字段' }))
     await screen.findByRole('dialog', { name: '抽取结果' }, { timeout: 5000 })
+    await user.click(screen.getByRole('button', { name: '下一项' }))
     await screen.findByRole('heading', { name: '体重' }, { timeout: 5000 })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '保存模板' })).toBeEnabled()

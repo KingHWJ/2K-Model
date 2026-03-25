@@ -4,6 +4,7 @@ import './App.css'
 import { WheelDisplay } from './components/WheelDisplay'
 import {
   createDefaultAppState,
+  defaultBuildSettings,
   defaultNumberFields,
   defaultRecommendedTemplates,
 } from './data/defaults'
@@ -15,6 +16,7 @@ import {
   saveTemplateFromSession,
 } from './lib/builderState'
 import { parse2KRatingsPlayerText } from './lib/import2kRatings'
+import { applyPositionPresetToFields, defaultPositionPresets, getPositionPreset } from './lib/positionPresets'
 import { loadAppState, saveAppState } from './lib/storage'
 import { createSpinSequence, getTargetWheelRotation } from './lib/wheel'
 import type {
@@ -28,7 +30,7 @@ import type {
   SavedTemplate,
 } from './types'
 
-type PageView = 'home' | 'builder' | 'number-draw' | 'tags' | 'library'
+type PageView = 'home' | 'builder' | 'number-draw' | 'settings' | 'tags' | 'library'
 
 // 抽取结果先进入弹窗确认，关闭后才推进到下一字段。
 interface DrawResultModalState {
@@ -121,6 +123,7 @@ function App() {
     appState.numberFields.find((field) => field.id === appState.numberSession.activeFieldId) ??
     appState.numberFields[0] ??
     null
+  const currentPositionPreset = getPositionPreset(appState.settings.positionPresetId)
   const numberWheelItems = activeNumberField ? createNumberWheelItems(activeNumberField) : []
   const activeNumberResult = activeNumberField
     ? appState.numberSession.results[activeNumberField.id]
@@ -169,6 +172,13 @@ function App() {
         </button>
         <button
           type="button"
+          className={activeView === 'settings' ? 'nav-button active' : 'nav-button'}
+          onClick={() => handleChangeView('settings')}
+        >
+          设置
+        </button>
+        <button
+          type="button"
           className={activeView === 'tags' ? 'nav-button active' : 'nav-button'}
           onClick={() => handleChangeView('tags')}
         >
@@ -186,6 +196,7 @@ function App() {
       {activeView === 'home' ? renderHomeView() : null}
       {activeView === 'builder' ? renderBuilderView() : null}
       {activeView === 'number-draw' ? renderNumberDrawView() : null}
+      {activeView === 'settings' ? renderSettingsView() : null}
       {activeView === 'tags' ? renderTagsView() : null}
       {activeView === 'library' ? renderLibraryView() : null}
       {drawResultModal.isOpen ? renderDrawResultModal() : null}
@@ -323,9 +334,24 @@ function App() {
                 <p className="eyebrow">当前字段</p>
                 <h3>{currentField.label}</h3>
               </div>
-              <span className="status-pill">
-                已完成 {Object.keys(appState.session.fieldAssignments).length}/{builderFields.length}
-              </span>
+              <div className="inline-action-group">
+                <span className="status-pill">
+                  已完成 {Object.keys(appState.session.fieldAssignments).length}/{builderFields.length}
+                </span>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={handleDrawCurrentField}
+                  disabled={
+                    candidatePlayers.length === 0 ||
+                    isWheelSpinning ||
+                    drawResultModal.isOpen ||
+                    isResultTransitioning
+                  }
+                >
+                  {isWheelSpinning ? '抽取中...' : '开始抽取'}
+                </button>
+              </div>
             </div>
 
             <div className="field-progress">
@@ -357,6 +383,7 @@ function App() {
               <div className="builder-wheel-side-actions">
                 <button
                   type="button"
+                  className="compact-button"
                   onClick={handleDrawCurrentField}
                   disabled={
                     candidatePlayers.length === 0 ||
@@ -389,24 +416,6 @@ function App() {
                 <strong>{currentRow?.noteText ?? '等待抽取'}</strong>
               </div>
             </article>
-
-            <div className="draw-actions">
-              <button
-                type="button"
-                onClick={handleDrawCurrentField}
-                disabled={
-                  candidatePlayers.length === 0 ||
-                  isWheelSpinning ||
-                  drawResultModal.isOpen ||
-                  isResultTransitioning
-                }
-              >
-                {isWheelSpinning ? '抽取中...' : '开始抽取'}
-              </button>
-              <button type="button" className="ghost-button" onClick={() => handleChangeView('home')}>
-                返回首页
-              </button>
-            </div>
           </div>
 
           <aside className="builder-side-card">
@@ -428,7 +437,7 @@ function App() {
                 />
               </label>
 
-              <div className="draw-actions">
+              <div className="compact-action-row">
                 <button type="button" className="ghost-button" onClick={() => setPlayerSearchQuery('')}>
                   清空搜索
                 </button>
@@ -482,84 +491,55 @@ function App() {
             <section className="side-panel-section">
               <div className="section-title-row">
                 <div>
-                  <p className="eyebrow">2KRatings</p>
-                  <h3>导入球员数值</h3>
+                  <p className="eyebrow">Template Name</p>
+                  <h3>保存当前模板</h3>
                 </div>
-              </div>
-
-              <label className="field">
-                <span>粘贴 2KRatings 文本</span>
-                <textarea
-                  aria-label="粘贴 2KRatings 文本"
-                  rows={10}
-                  placeholder="把 2KRatings 球员页复制后粘贴到这里"
-                  value={importText}
-                  onChange={(event) => setImportText(event.target.value)}
-                />
-              </label>
-
-              <div className="draw-actions">
-                <button type="button" onClick={handleImport2KRatingsPlayer}>
-                  导入 2KRatings 球员
-                </button>
                 <button
                   type="button"
-                  className="ghost-button"
-                  onClick={() => {
-                    setImportText('')
-                    setImportFeedback('')
-                  }}
+                  className="ghost-button compact-button"
+                  onClick={() => handleChangeView('home')}
                 >
-                  清空文本
+                  返回首页
                 </button>
               </div>
+              <label className="field">
+                <span>模板名称</span>
+                <input
+                  aria-label="模板名称"
+                  value={appState.session.templateName}
+                  onChange={(event) =>
+                    updateSession({
+                      ...appState.session,
+                      templateName: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              <button
+                type="button"
+                className="accent-button compact-button"
+                onClick={handleSaveTemplate}
+                disabled={Object.keys(appState.session.fieldAssignments).length === 0}
+              >
+                保存模板
+              </button>
 
-              {importFeedback ? <p className="muted success-note">{importFeedback}</p> : null}
-            </section>
-
-            <section className="side-panel-section">
-            <div className="section-title-row">
-              <div>
-                <p className="eyebrow">Template Name</p>
-                <h3>保存当前模板</h3>
-              </div>
-            </div>
-            <label className="field">
-              <span>模板名称</span>
-              <input
-                aria-label="模板名称"
-                value={appState.session.templateName}
-                onChange={(event) => updateSession({
-                  ...appState.session,
-                  templateName: event.target.value,
-                })}
-              />
-            </label>
-            <button
-              type="button"
-              className="accent-button"
-              onClick={handleSaveTemplate}
-              disabled={Object.keys(appState.session.fieldAssignments).length === 0}
-            >
-              保存模板
-            </button>
-
-            <div className="result-table">
-              <div className="result-row result-row-head">
-                <span>字段</span>
-                <span>最终值</span>
-                <span>来源</span>
-                <span>备注</span>
-              </div>
-              {resultRows.map((row) => (
-                <div className="result-row" key={row.field.id}>
-                  <span>{row.field.label}</span>
-                  <span className="result-value-cell">{row.valueText}</span>
-                  <span>{row.sourceText}</span>
-                  <span>{row.noteText}</span>
+              <div className="result-table">
+                <div className="result-row result-row-head">
+                  <span>字段</span>
+                  <span>最终值</span>
+                  <span>来源</span>
+                  <span>备注</span>
                 </div>
-              ))}
-            </div>
+                {resultRows.map((row) => (
+                  <div className="result-row" key={row.field.id}>
+                    <span>{row.field.label}</span>
+                    <span className="result-value-cell">{row.valueText}</span>
+                    <span>{row.sourceText}</span>
+                    <span>{row.noteText}</span>
+                  </div>
+                ))}
+              </div>
             </section>
           </aside>
         </section>
@@ -612,6 +592,13 @@ function App() {
                 <p className="eyebrow">字段列表</p>
                 <h3>默认数值范围</h3>
               </div>
+              <button
+                type="button"
+                className="ghost-button compact-button"
+                onClick={() => handleChangeView('settings')}
+              >
+                前往设置
+              </button>
             </div>
             <div className="number-field-list">
               {appState.numberFields.map((field) => (
@@ -628,9 +615,181 @@ function App() {
                 </button>
               ))}
             </div>
+          </aside>
 
+          <section className="builder-main-card">
+            <div className="section-title-row">
+              <div>
+                <p className="eyebrow">当前字段</p>
+                <h3>{activeNumberField?.label ?? '等待字段'}</h3>
+              </div>
+              <button
+                type="button"
+                className="ghost-button compact-button"
+                onClick={handleDrawNumberField}
+                disabled={
+                  !activeNumberField ||
+                  isNumberWheelSpinning ||
+                  drawResultModal.isOpen ||
+                  isResultTransitioning
+                }
+              >
+                {isNumberWheelSpinning ? '抽取中...' : '开始抽取'}
+              </button>
+            </div>
+
+            <div className="number-draw-stage">
+              <WheelDisplay
+                title="数字转盘"
+                subtitle={
+                  activeNumberField?.kind === 'options'
+                    ? '每一格都是一个体型选项，指针会停在某一个明确结果上'
+                    : '每个数字都是一格，指针会停在某一个明确数值上'
+                }
+                items={numberWheelItems.map(formatWheelItem)}
+                accent="red"
+                rotation={numberWheelRotation}
+                isSpinning={isNumberWheelSpinning}
+                highlightText={numberWheelHighlight || formatNumberRange(activeNumberField)}
+                selectedItem={numberWheelSelectedItem}
+                variant={activeNumberField?.kind === 'options' ? 'players' : 'numbers'}
+                size="large"
+              />
+
+              <div className="number-draw-side-actions">
+                <button
+                  type="button"
+                  className="compact-button"
+                  onClick={handleDrawNumberField}
+                  disabled={
+                    !activeNumberField ||
+                    isNumberWheelSpinning ||
+                    drawResultModal.isOpen ||
+                    isResultTransitioning
+                  }
+                >
+                  {isNumberWheelSpinning ? '抽取中...' : '抽取当前字段'}
+                </button>
+              </div>
+            </div>
+
+            <article className="current-result-card">
+              <p className="eyebrow">即时结果</p>
+              <div className="result-stat-row">
+                <span>字段名称</span>
+                <strong>{activeNumberField?.label ?? '等待字段'}</strong>
+              </div>
+              <div className="result-stat-row">
+                <span>默认值</span>
+                <strong>
+                  {activeNumberField
+                    ? formatNumberValue(activeNumberField, activeNumberField.defaultValue)
+                    : '等待字段'}
+                </strong>
+              </div>
+              <div className="result-stat-row">
+                <span>最终值</span>
+                <strong>
+                  {activeNumberField && activeNumberResult
+                    ? formatNumberValue(activeNumberField, activeNumberResult.value)
+                    : '等待抽取'}
+                </strong>
+              </div>
+              <div className="result-stat-row">
+                <span>备注</span>
+                <strong>{activeNumberField?.note ?? '等待字段'}</strong>
+              </div>
+            </article>
+
+            <div className="result-table number-result-table">
+              <div className="result-row result-row-head">
+                <span>字段</span>
+                <span>默认值</span>
+                <span>最终值</span>
+                <span>范围</span>
+                <span>备注</span>
+              </div>
+              {numberResultRows.map((row) => (
+                <div className="result-row" key={row.id}>
+                  <span>{row.label}</span>
+                  <span>{row.defaultValueText}</span>
+                  <span className="result-value-cell">{row.resultValueText}</span>
+                  <span>{row.rangeText}</span>
+                  <span>{row.noteText}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </section>
+      </main>
+    )
+  }
+
+  function renderSettingsView() {
+    return (
+      <main className="builder-view">
+        <section className="section-title-card">
+          <p className="eyebrow">Settings</p>
+          <h1>设置</h1>
+          <p className="muted">
+            默认值、范围、位置预设和 2KRatings 导入都集中在这里管理，抽取页只保留抽盘本身。
+          </p>
+        </section>
+
+        <section className="settings-layout">
+          <aside className="builder-side-card">
+            <section className="side-panel-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">Position Preset</p>
+                  <h3>位置预设</h3>
+                </div>
+              </div>
+              <label className="field">
+                <span>当前位置预设</span>
+                <select
+                  aria-label="当前位置预设"
+                  value={appState.settings.positionPresetId}
+                  onChange={(event) => handlePositionPresetChange(event.target.value)}
+                >
+                  {defaultPositionPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="muted">{currentPositionPreset.description}</p>
+            </section>
+
+            <section className="side-panel-section">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">字段列表</p>
+                  <h3>默认字段范围</h3>
+                </div>
+              </div>
+              <div className="number-field-list">
+                {appState.numberFields.map((field) => (
+                  <button
+                    key={field.id}
+                    type="button"
+                    className={
+                      field.id === activeNumberField?.id ? 'number-field-card active' : 'number-field-card'
+                    }
+                    onClick={() => handleSelectNumberField(field.id)}
+                  >
+                    <strong>{field.label}</strong>
+                    <span>{formatNumberRange(field)}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </aside>
+
+          <section className="builder-main-card settings-main-card">
             {activeNumberField ? (
-              <section className="side-panel-section">
+              <section className="settings-section-card">
                 <div className="section-title-row">
                   <div>
                     <p className="eyebrow">当前字段配置</p>
@@ -639,14 +798,14 @@ function App() {
                   <div className="inline-action-group">
                     <button
                       type="button"
-                      className="ghost-button"
+                      className="ghost-button compact-button"
                       onClick={() => handleResetNumberField(activeNumberField.id)}
                     >
                       恢复当前
                     </button>
                     <button
                       type="button"
-                      className="ghost-button"
+                      className="ghost-button compact-button"
                       onClick={handleResetAllNumberFields}
                     >
                       全部恢复
@@ -718,129 +877,99 @@ function App() {
                   </div>
                 )}
 
-                <div className="draw-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={() => handleClearNumberFieldResult(activeNumberField.id)}
-                  >
-                    清空当前结果
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleClearAllNumberResults}
-                  >
-                    清空全部结果
-                  </button>
+                <div className="settings-stat-grid">
+                  <article className="current-result-card">
+                    <p className="eyebrow">配置预览</p>
+                    <div className="result-stat-row">
+                      <span>范围</span>
+                      <strong>{formatNumberRange(activeNumberField)}</strong>
+                    </div>
+                    <div className="result-stat-row">
+                      <span>默认值</span>
+                      <strong>
+                        {formatNumberValue(activeNumberField, activeNumberField.defaultValue)}
+                      </strong>
+                    </div>
+                    <div className="result-stat-row">
+                      <span>当前结果</span>
+                      <strong>
+                        {appState.numberSession.results[activeNumberField.id]
+                          ? formatNumberValue(
+                              activeNumberField,
+                              appState.numberSession.results[activeNumberField.id].value,
+                            )
+                          : '等待抽取'}
+                      </strong>
+                    </div>
+                  </article>
+
+                  <article className="current-result-card">
+                    <p className="eyebrow">结果操作</p>
+                    <div className="compact-action-column">
+                      <button
+                        type="button"
+                        className="ghost-button compact-button"
+                        onClick={() => handleClearNumberFieldResult(activeNumberField.id)}
+                      >
+                        清空当前结果
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button compact-button"
+                        onClick={handleClearAllNumberResults}
+                      >
+                        清空全部结果
+                      </button>
+                    </div>
+                  </article>
                 </div>
               </section>
             ) : null}
-          </aside>
 
-          <section className="builder-main-card">
-            <div className="section-title-row">
-              <div>
-                <p className="eyebrow">当前字段</p>
-                <h3>{activeNumberField?.label ?? '等待字段'}</h3>
-              </div>
-            </div>
-
-            <div className="number-draw-stage">
-              <WheelDisplay
-                title="数字转盘"
-                subtitle={
-                  activeNumberField?.kind === 'options'
-                    ? '每一格都是一个体型选项，指针会停在某一个明确结果上'
-                    : '每个数字都是一格，指针会停在某一个明确数值上'
-                }
-                items={numberWheelItems.map(formatWheelItem)}
-                accent="red"
-                rotation={numberWheelRotation}
-                isSpinning={isNumberWheelSpinning}
-                highlightText={numberWheelHighlight || formatNumberRange(activeNumberField)}
-                selectedItem={numberWheelSelectedItem}
-                variant={activeNumberField?.kind === 'options' ? 'players' : 'numbers'}
-                size="large"
-              />
-
-              <div className="number-draw-side-actions">
+            <section className="settings-section-card">
+              <div className="section-title-row">
+                <div>
+                  <p className="eyebrow">2KRatings</p>
+                  <h3>导入球员数值</h3>
+                </div>
                 <button
                   type="button"
-                  onClick={handleDrawNumberField}
-                  disabled={
-                    !activeNumberField ||
-                    isNumberWheelSpinning ||
-                    drawResultModal.isOpen ||
-                    isResultTransitioning
-                  }
+                  className="ghost-button compact-button"
+                  onClick={() => {
+                    setImportText('')
+                    setImportFeedback('')
+                  }}
                 >
-                  {isNumberWheelSpinning ? '抽取中...' : '抽取当前字段'}
+                  清空文本
                 </button>
               </div>
-            </div>
 
-            <article className="current-result-card">
-              <p className="eyebrow">即时结果</p>
-              <div className="result-stat-row">
-                <span>字段名称</span>
-                <strong>{activeNumberField?.label ?? '等待字段'}</strong>
-              </div>
-              <div className="result-stat-row">
-                <span>默认值</span>
-                <strong>
-                  {activeNumberField
-                    ? formatNumberValue(activeNumberField, activeNumberField.defaultValue)
-                    : '等待字段'}
-                </strong>
-              </div>
-              <div className="result-stat-row">
-                <span>最终值</span>
-                <strong>
-                  {activeNumberField && activeNumberResult
-                    ? formatNumberValue(activeNumberField, activeNumberResult.value)
-                    : '等待抽取'}
-                </strong>
-              </div>
-              <div className="result-stat-row">
-                <span>备注</span>
-                <strong>{activeNumberField?.note ?? '等待字段'}</strong>
-              </div>
-            </article>
+              <label className="field">
+                <span>粘贴 2KRatings 文本</span>
+                <textarea
+                  aria-label="粘贴 2KRatings 文本"
+                  rows={10}
+                  placeholder="把 2KRatings 球员页复制后粘贴到这里"
+                  value={importText}
+                  onChange={(event) => setImportText(event.target.value)}
+                />
+              </label>
 
-            <div className="draw-actions">
-              <button
-                type="button"
-                onClick={handleDrawNumberField}
-                disabled={
-                  !activeNumberField ||
-                  isNumberWheelSpinning ||
-                  drawResultModal.isOpen ||
-                  isResultTransitioning
-                }
-              >
-                {isNumberWheelSpinning ? '抽取中...' : '开始抽取'}
-              </button>
-            </div>
-
-            <div className="result-table number-result-table">
-              <div className="result-row result-row-head">
-                <span>字段</span>
-                <span>默认值</span>
-                <span>最终值</span>
-                <span>范围</span>
-                <span>备注</span>
+              <div className="compact-action-row">
+                <button type="button" className="compact-button" onClick={handleImport2KRatingsPlayer}>
+                  导入 2KRatings 球员
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={() => handleChangeView(activeRecommendedTemplate ? 'builder' : 'home')}
+                >
+                  回到模板创建
+                </button>
               </div>
-              {numberResultRows.map((row) => (
-                <div className="result-row" key={row.id}>
-                  <span>{row.label}</span>
-                  <span>{row.defaultValueText}</span>
-                  <span className="result-value-cell">{row.resultValueText}</span>
-                  <span>{row.rangeText}</span>
-                  <span>{row.noteText}</span>
-                </div>
-              ))}
-            </div>
+
+              {importFeedback ? <p className="muted success-note">{importFeedback}</p> : null}
+            </section>
           </section>
         </section>
       </main>
@@ -1056,7 +1185,7 @@ function App() {
               `来自 ${player.name}`,
           )
         : '等待抽取',
-      nextButtonLabel: pendingBuilderFieldIndex !== null ? '立即下一项' : '完成',
+      nextButtonLabel: pendingBuilderFieldIndex !== null ? '下一项' : '完成',
       pendingBuilderFieldIndex,
       pendingNumberFieldId: null,
     })
@@ -1129,11 +1258,8 @@ function App() {
     const field = appState.numberFields.find((item) => item.id === fieldId)
     const result = field ? appState.numberSession.results[field.id] : undefined
 
-    setNumberWheelRotation(0)
     setNumberWheelHighlight(field ? formatNumberRange(field) : '')
-    setNumberWheelSelectedItem(
-      field && result ? formatWheelItem(result.value) : '',
-    )
+    setNumberWheelSelectedItem(field && result ? formatWheelItem(result.value) : '')
     cancelResultFlow()
     setAppState((currentState) => ({
       ...currentState,
@@ -1149,6 +1275,8 @@ function App() {
     key: 'min' | 'max' | 'defaultValue',
     value: string,
   ) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setNumberFieldDraft((currentDraft) => ({
       ...currentDraft,
       [`${key}Text`]: value,
@@ -1199,6 +1327,8 @@ function App() {
   }
 
   function handleOptionListChange(value: string) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setNumberFieldDraft((currentDraft) => ({
       ...currentDraft,
       optionsText: value,
@@ -1248,6 +1378,8 @@ function App() {
       return
     }
 
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setAppState((currentState) => ({
       ...currentState,
       numberFields: currentState.numberFields.map((field) =>
@@ -1262,12 +1394,16 @@ function App() {
   }
 
   function handleResetNumberField(fieldId: string) {
-    const fallbackField = defaultNumberFields.find((field) => field.id === fieldId)
+    const fallbackField = getPresetScopedDefaultFields(appState.settings.positionPresetId).find(
+      (field) => field.id === fieldId,
+    )
 
     if (!fallbackField) {
       return
     }
 
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setAppState((currentState) => {
       const nextFields = currentState.numberFields.map((field) =>
         field.id === fieldId ? structuredClone(fallbackField) : field,
@@ -1285,17 +1421,23 @@ function App() {
   }
 
   function handleResetAllNumberFields() {
+    const nextFields = getPresetScopedDefaultFields(appState.settings.positionPresetId)
+
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setAppState((currentState) => ({
       ...currentState,
-      numberFields: structuredClone(defaultNumberFields),
+      numberFields: nextFields,
       numberSession: normalizeNumberSessionResults(
         currentState.numberSession,
-        structuredClone(defaultNumberFields),
+        nextFields,
       ),
     }))
   }
 
   function handleClearNumberFieldResult(fieldId: string) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setAppState((currentState) => ({
       ...currentState,
       numberSession: {
@@ -1309,6 +1451,8 @@ function App() {
   }
 
   function handleClearAllNumberResults() {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
     setAppState((currentState) => ({
       ...currentState,
       numberSession: {
@@ -1377,7 +1521,7 @@ function App() {
       detailLabel: '范围',
       detailText: formatNumberRange(activeNumberField),
       noteText: activeNumberField.note,
-      nextButtonLabel: nextField ? '立即下一项' : '完成',
+      nextButtonLabel: nextField ? '下一项' : '完成',
       pendingBuilderFieldIndex: null,
       pendingNumberFieldId: nextField?.id ?? null,
     })
@@ -1413,7 +1557,6 @@ function App() {
       const nextFieldId = modalState.pendingNumberFieldId
       const nextField = appState.numberFields.find((field) => field.id === nextFieldId) ?? null
 
-      setNumberWheelRotation(0)
       setNumberWheelHighlight(nextField ? formatNumberRange(nextField) : '')
       setNumberWheelSelectedItem('')
       setAppState((currentState) => ({
@@ -1528,14 +1671,7 @@ function App() {
     }
 
     setDrawResultModal(modalState)
-    await sleep(1200)
-
-    if (resultFlowTokenRef.current !== token) {
-      return
-    }
-
     setIsResultTransitioning(false)
-    finalizeResultFlow(modalState)
   }
 
   function cancelResultFlow() {
@@ -1571,6 +1707,27 @@ function App() {
       }))
     }
     reader.readAsDataURL(file)
+  }
+
+  function handlePositionPresetChange(presetId: string) {
+    setNumberWheelHighlight('')
+    setNumberWheelSelectedItem('')
+    setAppState((currentState) => {
+      const nextFields = applyPositionPresetToFields(
+        structuredClone(currentState.numberFields),
+        presetId,
+      )
+
+      return {
+        ...currentState,
+        settings: {
+          ...currentState.settings,
+          positionPresetId: presetId,
+        },
+        numberFields: nextFields,
+        numberSession: normalizeNumberSessionResults(currentState.numberSession, nextFields),
+      }
+    })
   }
 }
 
@@ -1618,7 +1775,10 @@ function createNumberResultRow(
 
 function sleep(duration: number) {
   return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, duration)
+    const scaledDuration =
+      import.meta.env.MODE === 'test' ? Math.max(0, duration * 0.1) : duration
+
+    window.setTimeout(resolve, scaledDuration)
   })
 }
 
@@ -1729,6 +1889,13 @@ function createNumberFieldDraft(field: NumberDrawField | null): NumberFieldDraft
     defaultText: String(field.defaultValue ?? ''),
     optionsText: field.kind === 'options' ? (field.options ?? []).join('\n') : '',
   }
+}
+
+function getPresetScopedDefaultFields(positionPresetId: string) {
+  return applyPositionPresetToFields(
+    structuredClone(defaultNumberFields),
+    positionPresetId || defaultBuildSettings.positionPresetId,
+  )
 }
 
 function normalizeNumberSessionResults(

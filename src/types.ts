@@ -69,6 +69,31 @@ export interface NumberDrawResult {
   createdAt: string
 }
 
+export interface PositionPreset {
+  id: string
+  label: string
+  description: string
+  height: {
+    min: number
+    max: number
+    defaultValue: number
+  }
+  weight: {
+    min: number
+    max: number
+    defaultValue: number
+  }
+  wingspan: {
+    min: number
+    max: number
+    defaultValue: number
+  }
+}
+
+export interface BuildSettings {
+  positionPresetId: string
+}
+
 export interface NumberDrawSession {
   activeFieldId: string
   results: Record<string, NumberDrawResult>
@@ -139,6 +164,7 @@ export interface AppState {
   players: PlayerProfile[]
   recommendedTemplates: RecommendedTemplate[]
   tagDefinitions: TagDefinition[]
+  settings: BuildSettings
   numberFields: NumberDrawField[]
   numberSession: NumberDrawSession
   templates: SavedTemplate[]
