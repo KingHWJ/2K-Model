@@ -1,4 +1,4 @@
-import type { AppState } from '../types'
+import type { AppState, PlayerProfile } from '../types'
 
 export const STORAGE_KEY = '2k26-fusion-builder:v1'
 
@@ -16,7 +16,7 @@ export function loadAppState(storage: Storage, fallback: AppState): AppState {
       return fallback
     }
 
-    return parsed
+    return normalizeAppState(parsed)
   } catch {
     return fallback
   }
@@ -42,4 +42,18 @@ function isValidAppState(value: unknown): value is AppState {
     typeof candidate.session === 'object' &&
     candidate.session !== null
   )
+}
+
+function normalizeAppState(state: AppState): AppState {
+  return {
+    ...state,
+    players: state.players.map(normalizePlayerProfile),
+  }
+}
+
+function normalizePlayerProfile(player: PlayerProfile): PlayerProfile {
+  return {
+    ...player,
+    aliases: Array.isArray(player.aliases) ? player.aliases : [],
+  }
 }

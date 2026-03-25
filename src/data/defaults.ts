@@ -96,18 +96,27 @@ export const defaultCategories: AttributeCategory[] = [
 ]
 
 export const defaultTagLibrary = [
-  '半神半人',
-  '内线篮板猛兽',
+  '三威胁得分手',
+  '持球得分机器',
   '持球投射核心',
-  '外线防守大闸',
-  '全能锋线引擎',
+  '三分重力核心',
+  '外线锁防核心',
+  '推进组织核心',
+  '全能控锋',
   '高位策应枢纽',
-  '禁区终结霸主',
-  '无球跑动狙击手',
+  '高位策应中枢',
+  '禁区终结怪兽',
+  '篮板清道夫',
+  '护筐终结内线',
+  '机动型内线',
+  '侧翼持投核心',
+  '节奏组织核心',
+  '协防扫荡者',
+  '防守工兵',
 ]
 
 export const defaultPlayers: PlayerProfile[] = [
-  createPlayer('jordan', '迈克尔·乔丹', 'SG/SF', 99, '1996-97', ['半神半人', '外线防守大闸'], {
+  createPlayer('jordan', '迈克尔·乔丹', 'SG/SF', 99, '1996-97', ['三威胁得分手', '外线锁防核心'], ['michael jordan', 'mj', 'air jordan'], {
     meta: { templateArchetype: '攻防一体王牌', note: '关键时刻终结能力顶级' },
     body: { height: '198cm', weight: '98kg', wingspan: '211cm', frame: '紧凑宽肩' },
     athleticism: { speed: 94, acceleration: 93, vertical: 96, strength: 83, stamina: 99 },
@@ -118,7 +127,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 62, defensiveRebound: 82, boxout: 80 },
     tendency: { driveTendency: 96, shotTendency: 92, postTendency: 80, defenseTendency: 96, passTendency: 74, intangibles: 99 },
   }),
-  createPlayer('kobe', '科比·布莱恩特', 'SG/SF', 98, '2005-06', ['持球投射核心', '半神半人'], {
+  createPlayer('kobe', '科比·布莱恩特', 'SG/SF', 98, '2005-06', ['持球得分机器', '三威胁得分手'], ['kobe bryant', 'black mamba'], {
     meta: { templateArchetype: '高难度单打专家', note: '背身和中投都很强' },
     body: { height: '198cm', weight: '96kg', wingspan: '211cm', frame: '修长肩线' },
     athleticism: { speed: 91, acceleration: 90, vertical: 92, strength: 81, stamina: 98 },
@@ -129,7 +138,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 54, defensiveRebound: 76, boxout: 72 },
     tendency: { driveTendency: 92, shotTendency: 97, postTendency: 84, defenseTendency: 90, passTendency: 68, intangibles: 98 },
   }),
-  createPlayer('lebron', '勒布朗·詹姆斯', 'SF/PF', 99, '2012-13', ['全能锋线引擎', '半神半人'], {
+  createPlayer('lebron', '勒布朗·詹姆斯', 'SF/PF', 99, '2012-13', ['全能控锋', '推进组织核心'], ['lebron james', 'king james', 'lbj'], {
     meta: { templateArchetype: '全能推进核心', note: '身体与视野的双重压制' },
     body: { height: '206cm', weight: '113kg', wingspan: '214cm', frame: '重型宽肩' },
     athleticism: { speed: 92, acceleration: 91, vertical: 93, strength: 94, stamina: 98 },
@@ -140,7 +149,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 68, defensiveRebound: 84, boxout: 85 },
     tendency: { driveTendency: 95, shotTendency: 84, postTendency: 78, defenseTendency: 91, passTendency: 96, intangibles: 99 },
   }),
-  createPlayer('durant', '凯文·杜兰特', 'SF/PF', 97, '2013-14', ['持球投射核心', '全能锋线引擎'], {
+  createPlayer('durant', '凯文·杜兰特', 'SF/PF', 97, '2013-14', ['持球投射核心', '侧翼持投核心'], ['kevin durant', 'kd'], {
     meta: { templateArchetype: '高点错位得分手', note: '臂展与投射兼具' },
     body: { height: '211cm', weight: '109kg', wingspan: '225cm', frame: '修长高臂展' },
     athleticism: { speed: 88, acceleration: 87, vertical: 85, strength: 78, stamina: 96 },
@@ -151,7 +160,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 60, defensiveRebound: 78, boxout: 76 },
     tendency: { driveTendency: 88, shotTendency: 94, postTendency: 70, defenseTendency: 82, passTendency: 72, intangibles: 96 },
   }),
-  createPlayer('curry', '斯蒂芬·库里', 'PG', 97, '2015-16', ['无球跑动狙击手', '持球投射核心'], {
+  createPlayer('curry', '斯蒂芬·库里', 'PG', 97, '2015-16', ['三分重力核心', '持球投射核心'], ['stephen curry', 'steph curry'], {
     meta: { templateArchetype: '超远射程持球核', note: '外线重力极强' },
     body: { height: '188cm', weight: '84kg', wingspan: '191cm', frame: '灵巧控卫' },
     athleticism: { speed: 91, acceleration: 94, vertical: 78, strength: 60, stamina: 97 },
@@ -162,7 +171,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 48, defensiveRebound: 62, boxout: 50 },
     tendency: { driveTendency: 82, shotTendency: 98, postTendency: 18, defenseTendency: 74, passTendency: 90, intangibles: 98 },
   }),
-  createPlayer('shaq', '沙奎尔·奥尼尔', 'C', 98, '1999-00', ['禁区终结霸主', '内线篮板猛兽'], {
+  createPlayer('shaq', '沙奎尔·奥尼尔', 'C', 98, '1999-00', ['禁区终结怪兽', '篮板清道夫'], ['shaquille oneal', "shaquille o'neal", 'shaq'], {
     meta: { templateArchetype: '低位怪兽', note: '绝对力量碾压' },
     body: { height: '216cm', weight: '147kg', wingspan: '229cm', frame: '巨兽级宽肩' },
     athleticism: { speed: 73, acceleration: 68, vertical: 82, strength: 99, stamina: 94 },
@@ -173,7 +182,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 98, defensiveRebound: 97, boxout: 99 },
     tendency: { driveTendency: 30, shotTendency: 92, postTendency: 99, defenseTendency: 88, passTendency: 42, intangibles: 97 },
   }),
-  createPlayer('rodman', '丹尼斯·罗德曼', 'PF', 94, '1995-96', ['内线篮板猛兽', '外线防守大闸'], {
+  createPlayer('rodman', '丹尼斯·罗德曼', 'PF', 94, '1995-96', ['篮板清道夫', '防守工兵'], ['dennis rodman'], {
     meta: { templateArchetype: '防守篮板疯狗', note: '能量感和机动性爆棚' },
     body: { height: '201cm', weight: '95kg', wingspan: '218cm', frame: '强硬瘦长' },
     athleticism: { speed: 84, acceleration: 83, vertical: 90, strength: 86, stamina: 99 },
@@ -184,7 +193,7 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 97, defensiveRebound: 99, boxout: 97 },
     tendency: { driveTendency: 48, shotTendency: 40, postTendency: 46, defenseTendency: 98, passTendency: 60, intangibles: 99 },
   }),
-  createPlayer('jokic', '尼古拉·约基奇', 'C', 97, '2023-24', ['高位策应枢纽', '全能锋线引擎'], {
+  createPlayer('jokic', '尼古拉·约基奇', 'C', 97, '2023-24', ['高位策应中枢', '节奏组织核心'], ['nikola jokic', 'joker'], {
     meta: { templateArchetype: '高位策应中枢', note: '节奏感和传球视野顶级' },
     body: { height: '211cm', weight: '129kg', wingspan: '221cm', frame: '厚重中锋' },
     athleticism: { speed: 72, acceleration: 68, vertical: 72, strength: 91, stamina: 96 },
@@ -195,12 +204,78 @@ export const defaultPlayers: PlayerProfile[] = [
     rebounding: { offensiveRebound: 91, defensiveRebound: 96, boxout: 95 },
     tendency: { driveTendency: 52, shotTendency: 82, postTendency: 90, defenseTendency: 76, passTendency: 99, intangibles: 98 },
   }),
+  createPlayer('shai', '谢伊·吉尔杰斯-亚历山大', 'PG/SG', 98, '2025-26', ['节奏组织核心', '持球得分机器'], ['shai gilgeous-alexander', 'shai gilgeous alexander', 'sga'], {
+    meta: { templateArchetype: '节奏型持球核心', note: '中距离和造犯规能力极强' },
+    body: { height: '198cm', weight: '88kg', wingspan: '211cm', frame: '修长后卫' },
+    athleticism: { speed: 92, acceleration: 94, vertical: 84, strength: 72, stamina: 97 },
+    finishing: { layup: 97, drivingDunk: 83, closeShot: 92, drawFoul: 96 },
+    shooting: { midRange: 94, threePoint: 86, freeThrow: 91, shotTendency: '节奏变向中投' },
+    playmaking: { ballHandle: 95, passAccuracy: 89, speedWithBall: 93, turnoverControl: 90 },
+    defense: { perimeterDefense: 84, interiorDefense: 58, steal: 92, block: 55, helpDefense: '均衡' },
+    rebounding: { offensiveRebound: 44, defensiveRebound: 62, boxout: 48 },
+    tendency: { driveTendency: 97, shotTendency: 91, postTendency: 28, defenseTendency: 82, passTendency: 86, intangibles: 98 },
+  }),
+  createPlayer('giannis', '扬尼斯·阿德托昆博', 'PF/C', 97, '2025-26', ['禁区终结怪兽', '协防扫荡者'], ['giannis antetokounmpo', 'greek freak'], {
+    meta: { templateArchetype: '推进型攻框巨兽', note: '转身一步和护框覆盖兼备' },
+    body: { height: '211cm', weight: '110kg', wingspan: '224cm', frame: '超长臂展' },
+    athleticism: { speed: 90, acceleration: 89, vertical: 91, strength: 94, stamina: 98 },
+    finishing: { layup: 96, drivingDunk: 98, closeShot: 94, drawFoul: 95 },
+    shooting: { midRange: 74, threePoint: 69, freeThrow: 71, shotTendency: '攻框压迫' },
+    playmaking: { ballHandle: 84, passAccuracy: 79, speedWithBall: 84, turnoverControl: 76 },
+    defense: { perimeterDefense: 86, interiorDefense: 92, steal: 79, block: 93, helpDefense: '扫荡补防' },
+    rebounding: { offensiveRebound: 86, defensiveRebound: 92, boxout: 90 },
+    tendency: { driveTendency: 98, shotTendency: 80, postTendency: 68, defenseTendency: 95, passTendency: 70, intangibles: 98 },
+  }),
+  createPlayer('luka', '卢卡·东契奇', 'PG/SG', 96, '2025-26', ['节奏组织核心', '持球得分机器'], ['luka doncic'], {
+    meta: { templateArchetype: '慢节奏持球大核', note: '节奏控制和错位点名顶级' },
+    body: { height: '201cm', weight: '104kg', wingspan: '209cm', frame: '重型后卫' },
+    athleticism: { speed: 78, acceleration: 77, vertical: 72, strength: 78, stamina: 97 },
+    finishing: { layup: 94, drivingDunk: 76, closeShot: 93, drawFoul: 93 },
+    shooting: { midRange: 91, threePoint: 90, freeThrow: 83, shotTendency: '后撤步三分' },
+    playmaking: { ballHandle: 96, passAccuracy: 94, speedWithBall: 79, turnoverControl: 90 },
+    defense: { perimeterDefense: 72, interiorDefense: 60, steal: 70, block: 56, helpDefense: '均衡' },
+    rebounding: { offensiveRebound: 56, defensiveRebound: 84, boxout: 72 },
+    tendency: { driveTendency: 85, shotTendency: 94, postTendency: 72, defenseTendency: 66, passTendency: 95, intangibles: 97 },
+  }),
+  createPlayer('tatum', '杰森·塔图姆', 'SF/PF', 95, '2025-26', ['侧翼持投核心', '外线锁防核心'], ['jayson tatum'], {
+    meta: { templateArchetype: '双向持投侧翼', note: '攻防两端稳定的明星锋线' },
+    body: { height: '203cm', weight: '95kg', wingspan: '211cm', frame: '标准锋线' },
+    athleticism: { speed: 86, acceleration: 85, vertical: 84, strength: 79, stamina: 97 },
+    finishing: { layup: 90, drivingDunk: 88, closeShot: 90, drawFoul: 87 },
+    shooting: { midRange: 91, threePoint: 89, freeThrow: 87, shotTendency: '持球急停投篮' },
+    playmaking: { ballHandle: 86, passAccuracy: 79, speedWithBall: 84, turnoverControl: 82 },
+    defense: { perimeterDefense: 88, interiorDefense: 73, steal: 78, block: 72, helpDefense: '积极' },
+    rebounding: { offensiveRebound: 60, defensiveRebound: 82, boxout: 76 },
+    tendency: { driveTendency: 86, shotTendency: 91, postTendency: 54, defenseTendency: 85, passTendency: 71, intangibles: 96 },
+  }),
+  createPlayer('wembanyama', '维克托·文班亚马', 'PF/C', 96, '2025-26', ['机动型内线', '护筐终结内线'], ['victor wembanyama', 'wemby'], {
+    meta: { templateArchetype: '护筐独角兽', note: '臂展、护筐和错位投射都很离谱' },
+    body: { height: '224cm', weight: '107kg', wingspan: '244cm', frame: '超长独角兽' },
+    athleticism: { speed: 82, acceleration: 79, vertical: 86, strength: 75, stamina: 95 },
+    finishing: { layup: 88, drivingDunk: 90, closeShot: 93, drawFoul: 82 },
+    shooting: { midRange: 84, threePoint: 82, freeThrow: 80, shotTendency: '高点投射' },
+    playmaking: { ballHandle: 74, passAccuracy: 76, speedWithBall: 71, turnoverControl: 72 },
+    defense: { perimeterDefense: 82, interiorDefense: 95, steal: 78, block: 98, helpDefense: '护筐优先' },
+    rebounding: { offensiveRebound: 79, defensiveRebound: 92, boxout: 86 },
+    tendency: { driveTendency: 68, shotTendency: 83, postTendency: 64, defenseTendency: 98, passTendency: 65, intangibles: 97 },
+  }),
+  createPlayer('anthony-davis', '安东尼·戴维斯', 'PF/C', 95, '2025-26', ['护筐终结内线', '协防扫荡者'], ['anthony davis', 'ad'], {
+    meta: { templateArchetype: '双向护筐终结者', note: '近框终结和协防补位都很强' },
+    body: { height: '208cm', weight: '115kg', wingspan: '227cm', frame: '修长内线' },
+    athleticism: { speed: 80, acceleration: 77, vertical: 82, strength: 84, stamina: 94 },
+    finishing: { layup: 88, drivingDunk: 87, closeShot: 92, drawFoul: 80 },
+    shooting: { midRange: 80, threePoint: 73, freeThrow: 78, shotTendency: '近框吃饼' },
+    playmaking: { ballHandle: 70, passAccuracy: 71, speedWithBall: 69, turnoverControl: 72 },
+    defense: { perimeterDefense: 79, interiorDefense: 94, steal: 76, block: 95, helpDefense: '护筐优先' },
+    rebounding: { offensiveRebound: 82, defensiveRebound: 90, boxout: 88 },
+    tendency: { driveTendency: 62, shotTendency: 79, postTendency: 66, defenseTendency: 95, passTendency: 58, intangibles: 96 },
+  }),
 ]
 
 export const defaultPreset: Preset = {
   id: '2k26-legend-lab',
   name: '2K26 传奇融合池',
-  description: '内置高能力球星样本，可直接开始融合抽取。',
+  description: '内置传奇与现役高能力球星样本，并附带更贴近 2K archetype 的中文标签。',
   defaultCandidateCount: 4,
   availablePlayerIds: defaultPlayers.map((player) => player.id),
   availableCategoryIds: defaultCategories.map((category) => category.id),
@@ -225,6 +300,7 @@ function createPlayer(
   overall: number,
   era: string,
   tags: string[],
+  aliases: string[],
   categories: PlayerProfile['categories'],
 ): PlayerProfile {
   return {
@@ -234,6 +310,7 @@ function createPlayer(
     overall,
     era,
     tags,
+    aliases,
     categories,
   }
 }

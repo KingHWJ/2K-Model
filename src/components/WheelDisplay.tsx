@@ -6,6 +6,7 @@ interface WheelDisplayProps {
   items: string[]
   accent: 'gold' | 'red'
   rotation: number
+  isSpinning?: boolean
   highlightText?: string
 }
 
@@ -20,6 +21,7 @@ export function WheelDisplay({
   items,
   accent,
   rotation,
+  isSpinning = false,
   highlightText,
 }: WheelDisplayProps) {
   const safeItems = items.length > 0 ? items : ['等待数据']
@@ -35,10 +37,10 @@ export function WheelDisplay({
         </p>
       </div>
 
-      <div className="wheel-scene">
+      <div className={isSpinning ? 'wheel-scene spinning' : 'wheel-scene'}>
         <div className="wheel-pointer" aria-hidden="true" />
         <div
-          className="wheel-disc"
+          className={isSpinning ? 'wheel-disc spinning' : 'wheel-disc'}
           style={{
             backgroundImage: gradient,
             transform: `rotate(${rotation}deg)`,

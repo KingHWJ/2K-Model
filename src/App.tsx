@@ -5,7 +5,6 @@ import { WheelDisplay } from './components/WheelDisplay'
 import {
   clampCandidateCount,
   createSession,
-  drawAllCategories,
   drawCandidatePlayerIds,
   drawCategoryAssignment,
   openTemplateSession,
@@ -30,8 +29,13 @@ function App() {
   )
   const [candidateRotation, setCandidateRotation] = useState(0)
   const [categoryRotation, setCategoryRotation] = useState(0)
+  const [candidateSpinLabel, setCandidateSpinLabel] = useState('')
+  const [categorySpinLabel, setCategorySpinLabel] = useState('')
+  const [isCandidateSpinning, setIsCandidateSpinning] = useState(false)
+  const [isCategorySpinning, setIsCategorySpinning] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState(appState.players[0]?.id ?? '')
   const [selectedCategoryId, setSelectedCategoryId] = useState(appState.categories[0]?.id ?? '')
+  const [playerSearchKeyword, setPlayerSearchKeyword] = useState('')
   const [tagDraft, setTagDraft] = useState('')
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null)
 
@@ -58,9 +62,14 @@ function App() {
   const availableCategories = appState.categories.filter((category) =>
     activePreset.availableCategoryIds.includes(category.id),
   )
-  const selectedPlayer =
-    appState.players.find((player) => player.id === selectedPlayerId) ??
-    appState.players[0]
+  const filteredPlayers = appState.players.filter((player) =>
+    matchesPlayerKeyword(player, playerSearchKeyword),
+  )
+  const selectedPlayer = (
+    filteredPlayers.some((player) => player.id === selectedPlayerId)
+      ? filteredPlayers.find((player) => player.id === selectedPlayerId)
+      : filteredPlayers[0]
+  ) ?? appState.players.find((player) => player.id === selectedPlayerId) ?? appState.players[0]
   const selectedCategory =
     appState.categories.find((category) => category.id === selectedCategoryId) ??
     appState.categories[0]
@@ -151,6 +160,15 @@ function App() {
             <div className="subpanel-title-row">
               <h3>球员池管理</h3>
               <div className="inline-actions">
+                <label className="field compact-field">
+                  <span>搜索球员</span>
+                  <input
+                    aria-label="搜索球员"
+                    value={playerSearchKeyword}
+                    placeholder="输入 jordan、约基奇、SGA、KD、PG、标签等"
+                    onChange={(event) => setPlayerSearchKeyword(event.target.value)}
+                  />
+                </label>
                 <button type="button" onClick={handleAddPlayer}>
                   新增球员
                 </button>
@@ -166,7 +184,7 @@ function App() {
             </div>
 
             <div className="list-selector">
-              {appState.players.map((player) => (
+              {filteredPlayers.map((player) => (
                 <button
                   key={player.id}
                   type="button"
@@ -177,6 +195,9 @@ function App() {
                 </button>
               ))}
             </div>
+            {filteredPlayers.length === 0 ? (
+              <p className="empty-inline">没有匹配到球员，试试英文 id、中文姓名、位置或标签。</p>
+            ) : null}
 
             {selectedPlayer ? (
               <div className="editor-grid">
@@ -231,6 +252,22 @@ function App() {
                       updatePlayer(
                         selectedPlayer.id,
                         'tags',
+                        event.target.value
+                          .split(',')
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                  />
+                </label>
+                <label className="field field-span">
+                  <span>搜索别名（逗号分隔）</span>
+                  <input
+                    value={selectedPlayer.aliases.join(', ')}
+                    onChange={(event) =>
+                      updatePlayer(
+                        selectedPlayer.id,
+                        'aliases',
                         event.target.value
                           .split(',')
                           .map((item) => item.trim())
@@ -406,16 +443,20 @@ function App() {
               <h2>转盘抽选区</h2>
             </div>
             <div className="inline-actions">
-              <button type="button" onClick={handleDrawCandidates}>
-                抽取候选球员
+              <button
+                type="button"
+                onClick={handleDrawCandidates}
+                disabled={isCandidateSpinning || isCategorySpinning}
+              >
+                {isCandidateSpinning ? '候选抽选中...' : '抽取候选球员'}
               </button>
               <button
                 type="button"
                 className="accent-button"
                 onClick={handleDrawAll}
-                disabled={candidatePlayers.length === 0}
+                disabled={candidatePlayers.length === 0 || isCandidateSpinning || isCategorySpinning}
               >
-                一键全抽
+                {isCategorySpinning ? '属性融合中...' : '一键全抽'}
               </button>
             </div>
           </div>
@@ -426,7 +467,10 @@ function App() {
             items={availablePlayers.map((player) => player.name)}
             accent="gold"
             rotation={candidateRotation}
-            highlightText={candidatePlayers.map((player) => player.name).join(' / ')}
+            isSpinning={isCandidateSpinning}
+            highlightText={
+              candidateSpinLabel || candidatePlayers.map((player) => player.name).join(' / ')
+            }
           />
 
           <div className="candidate-bar">
@@ -450,10 +494,11 @@ function App() {
             items={availableCategories.map((category) => category.name)}
             accent="red"
             rotation={categoryRotation}
+            isSpinning={isCategorySpinning}
             highlightText={
-              liveSummary.categorySources.at(-1)?.categoryName
+              categorySpinLabel || (liveSummary.categorySources.at(-1)?.categoryName
                 ? `${liveSummary.categorySources.at(-1)?.categoryName} / ${liveSummary.categorySources.at(-1)?.playerName}`
-                : undefined
+                : undefined)
             }
           />
 
@@ -477,7 +522,7 @@ function App() {
                       onChange={(event) =>
                         handleManualAssignment(category.id, event.target.value)
                       }
-                      disabled={candidatePlayers.length === 0}
+                      disabled={candidatePlayers.length === 0 || isCandidateSpinning || isCategorySpinning}
                     >
                       <option value="">手动指定来源</option>
                       {candidatePlayers.map((player) => (
@@ -489,9 +534,9 @@ function App() {
                     <button
                       type="button"
                       onClick={() => handleDrawCategory(category.id)}
-                      disabled={candidatePlayers.length === 0}
+                      disabled={candidatePlayers.length === 0 || isCandidateSpinning || isCategorySpinning}
                     >
-                      抽取 {category.name}
+                      {isCategorySpinning ? '抽取中...' : `抽取 ${category.name}`}
                     </button>
                   </div>
                 </div>
@@ -657,10 +702,21 @@ function App() {
   }
 
   function handleDrawCandidates() {
+    if (isCandidateSpinning || isCategorySpinning) {
+      return
+    }
+
+    void runCandidateSpin()
+  }
+
+  async function runCandidateSpin() {
     const nextCandidateIds = drawCandidatePlayerIds(
       availablePlayers.map((player) => player.id),
       appState.session.candidateCount,
       Math.random,
+    )
+    const finalNames = nextCandidateIds.map((playerId) =>
+      findPlayerName(appState.players, playerId),
     )
     const now = new Date().toISOString()
     const candidateLogs = nextCandidateIds.map((playerId) => ({
@@ -670,7 +726,13 @@ function App() {
       createdAt: now,
     }))
 
+    setIsCandidateSpinning(true)
     setCandidateRotation((value) => value + 360 + Math.random() * 240)
+    for (const label of createSpinFrames(finalNames, availablePlayers.map((player) => player.name))) {
+      setCandidateSpinLabel(label)
+      await sleep(140)
+    }
+
     updateSession({
       ...appState.session,
       candidatePlayerIds: nextCandidateIds,
@@ -678,22 +740,81 @@ function App() {
       drawLog: [...appState.session.drawLog, ...candidateLogs],
       updatedAt: now,
     })
+    setCandidateSpinLabel(finalNames.join(' / '))
+    await sleep(160)
+    setIsCandidateSpinning(false)
   }
 
   function handleDrawCategory(categoryId: string) {
+    if (isCandidateSpinning || isCategorySpinning) {
+      return
+    }
+
+    void runSingleCategorySpin(categoryId)
+  }
+
+  async function runSingleCategorySpin(categoryId: string) {
+    setIsCategorySpinning(true)
     setCategoryRotation((value) => value + 360 + Math.random() * 180)
-    updateSession(drawCategoryAssignment(appState.session, categoryId, Math.random))
+    const category = availableCategories.find((item) => item.id === categoryId)
+    for (const label of createSpinFrames(
+      candidatePlayers.map((player) => player.name),
+      candidatePlayers.map((player) => player.name),
+    )) {
+      setCategorySpinLabel(`${category?.name ?? '属性组'} / ${label}`)
+      await sleep(120)
+    }
+
+    const nextSession = drawCategoryAssignment(appState.session, categoryId, Math.random)
+    updateSession(nextSession)
+    setCategorySpinLabel(
+      `${category?.name ?? '属性组'} / ${findPlayerName(
+        appState.players,
+        nextSession.assignments[categoryId].playerId,
+      )}`,
+    )
+    await sleep(160)
+    setIsCategorySpinning(false)
   }
 
   function handleDrawAll() {
+    if (isCandidateSpinning || isCategorySpinning) {
+      return
+    }
+
+    void runAllCategorySpin()
+  }
+
+  async function runAllCategorySpin() {
+    setIsCategorySpinning(true)
     setCategoryRotation((value) => value + 540 + Math.random() * 180)
-    updateSession(
-      drawAllCategories(
-        appState.session,
-        availableCategories.map((category) => category.id),
-        Math.random,
-      ),
-    )
+    let nextSession = appState.session
+
+    for (const category of availableCategories) {
+      for (const label of createSpinFrames(
+        candidatePlayers.map((player) => player.name),
+        candidatePlayers.map((player) => player.name),
+      )) {
+        setCategorySpinLabel(`${category.name} / ${label}`)
+        await sleep(110)
+      }
+
+      nextSession = drawCategoryAssignment(nextSession, category.id, Math.random)
+      updateSession(nextSession)
+    }
+
+    const finalCategory = availableCategories.at(-1)
+    if (finalCategory && nextSession.assignments[finalCategory.id]) {
+      setCategorySpinLabel(
+        `${finalCategory.name} / ${findPlayerName(
+          appState.players,
+          nextSession.assignments[finalCategory.id].playerId,
+        )}`,
+      )
+    }
+
+    await sleep(180)
+    setIsCategorySpinning(false)
   }
 
   function handleSaveTemplate() {
@@ -804,6 +925,7 @@ function App() {
       overall: 85,
       era: '自定义',
       tags: [],
+      aliases: [],
       categories: fallbackCategories,
     }
 
@@ -1073,6 +1195,42 @@ function coerceValue(input: string, sample: AttributeValue): AttributeValue {
   }
 
   return input
+}
+
+function matchesPlayerKeyword(player: PlayerProfile, keyword: string) {
+  const normalizedKeyword = keyword.trim().toLowerCase()
+
+  if (!normalizedKeyword) {
+    return true
+  }
+
+  const templateArchetype = String(player.categories.meta?.templateArchetype ?? '')
+  const haystack = [
+    player.id,
+    player.name,
+    player.position,
+    player.era,
+    templateArchetype,
+    ...player.tags,
+    ...player.aliases,
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  return haystack.includes(normalizedKeyword)
+}
+
+function createSpinFrames(finalLabels: string[], fallbackLabels: string[]) {
+  const fallback = fallbackLabels.slice(0, Math.max(4, Math.min(6, fallbackLabels.length)))
+  const frames = [...fallback, ...finalLabels]
+
+  return frames.length > 0 ? frames : ['等待抽取']
+}
+
+function sleep(duration: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, duration)
+  })
 }
 
 function normalizeState(state: AppState): AppState {

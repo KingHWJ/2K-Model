@@ -182,6 +182,7 @@ function createPlayer(id: string, name: string, overall: number): PlayerProfile 
     overall,
     era: '巅峰赛季',
     tags: ['半神半人', '持球投射核心'],
+    aliases: [id],
     categories: {
       body: {
         height: '198cm',

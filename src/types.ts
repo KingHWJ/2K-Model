@@ -19,6 +19,7 @@ export interface PlayerProfile {
   overall: number
   era: string
   tags: string[]
+  aliases: string[]
   categories: Record<string, Record<string, AttributeValue>>
 }
 
